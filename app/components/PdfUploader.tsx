@@ -2,7 +2,13 @@
 
 import { useState, useRef } from 'react';
 
-export default function PdfUploader({ onClose }: { onClose: () => void }) {
+// Dodali smo onUploadSuccess kako bi prosledili ime fajla glavnom ekranu
+interface PdfUploaderProps {
+  onClose: () => void;
+  onUploadSuccess: (fileName: string) => void;
+}
+
+export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; text: string }>({ type: null, text: '' });
@@ -26,6 +32,7 @@ export default function PdfUploader({ onClose }: { onClose: () => void }) {
 
     const formData = new FormData();
     formData.append('file', file);
+    const uploadedFileName = file.name; // Pamtimo ime fajla
 
     try {
       const res = await fetch('/api/ingest', {
@@ -41,6 +48,12 @@ export default function PdfUploader({ onClose }: { onClose: () => void }) {
         setStatus({ type: 'success', text: data.message || 'Dokument je uspešno sačuvan i indeksiran!' });
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = ''; // Resetovanje inputa
+        
+        // Magija: Čekamo 1.5 sekundu da korisnik vidi zelenu poruku, 
+        // a zatim zatvaramo modal i šaljemo ime fajla glavnom interfejsu
+        setTimeout(() => {
+          onUploadSuccess(uploadedFileName);
+        }, 1500);
       }
     } catch (error) {
       setStatus({ type: 'error', text: 'Greška pri povezivanju sa serverom.' });
@@ -57,6 +70,7 @@ export default function PdfUploader({ onClose }: { onClose: () => void }) {
           <button 
             onClick={onClose} 
             className="text-[#16263D]/50 hover:text-[#16263D] transition text-2xl leading-none"
+            disabled={loading} // Ne damo da se zatvori dok se učitava
           >
             &times;
           </button>
@@ -68,6 +82,7 @@ export default function PdfUploader({ onClose }: { onClose: () => void }) {
             accept="application/pdf"
             onChange={handleFileChange}
             ref={fileInputRef}
+            disabled={loading} // Zaključavamo input dok se učitava
             className="w-full text-sm text-[#16263D] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#16263D]/10 file:text-[#16263D] hover:file:bg-[#16263D]/20 cursor-pointer transition"
           />
         </div>
@@ -81,13 +96,14 @@ export default function PdfUploader({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-3 mt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-[#16263D] hover:bg-[#16263D]/10 rounded-md transition"
+            disabled={loading}
+            className="px-4 py-2 text-sm text-[#16263D] hover:bg-[#16263D]/10 rounded-md transition disabled:opacity-50"
           >
             Zatvori
           </button>
           <button
             onClick={handleUpload}
-            disabled={loading || !file}
+            disabled={loading || !file || status.type === 'success'}
             className="px-4 py-2 text-sm bg-[#16263D] text-[#F7F3EC] rounded-md hover:bg-[#16263D]/90 disabled:opacity-50 transition flex items-center gap-2 shadow-sm"
           >
             {loading ? <span className="animate-pulse">Indeksiranje...</span> : 'Sačuvaj PDF'}

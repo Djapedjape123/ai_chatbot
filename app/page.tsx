@@ -15,30 +15,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
-
+  
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  async function deleteChat(chatId: string) {
-    // Sprečavamo slučajno kliktanje
-    if (!confirm('Da li ste sigurni da želite da obrišete ovaj razgovor?')) return;
-
-    try {
-      const res = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Greška');
-
-      // Ako smo obrisali trenutno otvoren chat, resetujemo ekran
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-        setMessages([]);
-      }
-
-      // Osvežavamo listu razgovora
-      loadChats();
-      showToast('Razgovor obrisan.');
-    } catch {
-      showToast('Greška pri brisanju razgovora.');
-    }
-  }
 
   useEffect(() => {
     loadChats();
@@ -74,17 +52,39 @@ export default function Home() {
     setMessages([]);
   }
 
+  async function deleteChat(chatId: string) {
+    if (!confirm('Da li ste sigurni da želite da obrišete ovaj razgovor?')) return;
+
+    try {
+      const res = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Greška');
+
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([]);
+      }
+      
+      loadChats();
+      showToast('Razgovor obrisan.');
+    } catch {
+      showToast('Greška pri brisanju razgovora.');
+    }
+  }
+
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
   }
 
-  async function sendMessage() {
-    const query = input.trim();
+  async function sendMessage(autoQuery?: string) {
+    const query = autoQuery || input.trim();
     if (!query || loading) return;
 
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: query }]);
+    if (!autoQuery) {
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', content: query }]);
+    }
+
     setLoading(true);
 
     try {
@@ -113,8 +113,22 @@ export default function Home() {
     }
   }
 
+  function handleUploadSuccess(fileName: string) {
+    setIsPdfModalOpen(false); 
+    newChat(); 
+    
+    const autoPrompt = `Upravo sam dodao pravni dokument pod nazivom "${fileName}". Molim te, pronađi ga i napravi mi kratak pregled onoga što on sadrži, koje su mu glavne teme i izvuci par najvažnijih teza, kako bismo mogli da započnemo rad na njemu.`;
+    
+    setTimeout(() => {
+      sendMessage(autoPrompt);
+    }, 200);
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && e.shiftKey) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }
 
   function copyText(text: string) {
@@ -124,9 +138,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen relative">
-      {/* Sidebar */}
-      {/* Nova Sidebar Komponenta */}
-      <Sidebar
+      <Sidebar 
         chats={chats}
         activeChatId={activeChatId}
         onNewChat={newChat}
@@ -135,7 +147,6 @@ export default function Home() {
         onDeleteChat={deleteChat}
       />
 
-      {/* Glavni deo */}
       <main className="flex-1 flex flex-col z-0">
         <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full">
           {messages.length === 0 && (
@@ -147,15 +158,16 @@ export default function Home() {
           {messages.map((m, i) => (
             <div key={i} className={`mb-6 ${m.role === 'user' ? 'text-right' : ''}`}>
               <div
-                className={`inline-block max-w-[85%] rounded-lg px-4 py-3 text-left leading-relaxed ${m.role === 'user'
+                className={`inline-block max-w-[85%] rounded-lg px-4 py-3 text-left leading-relaxed ${
+                  m.role === 'user'
                     ? 'bg-[#16263D] text-[#F7F3EC]'
-                    : 'bg-white border border-[#16263D]/10'
-                  }`}
+                    : 'bg-white border border-[#16263D]/10 shadow-sm'
+                }`}
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
               {m.role === 'assistant' && (
-                <div className="mt-1">
+                <div className="mt-1 text-left">
                   <button
                     onClick={() => copyText(m.content)}
                     className="text-xs text-[#16263D]/50 hover:text-[#16263D] transition"
@@ -169,8 +181,8 @@ export default function Home() {
 
           {loading && (
             <div className="mb-6">
-              <div className="inline-block rounded-lg px-4 py-3 bg-white border border-[#16263D]/10">
-                <span className="animate-pulse text-[#16263D]/50">Razmišljam…</span>
+              <div className="inline-block rounded-lg px-4 py-3 bg-white border border-[#16263D]/10 shadow-sm">
+                <span className="animate-pulse text-[#16263D]/50 text-sm">Pretražujem bazu i razmišljam…</span>
               </div>
             </div>
           )}
@@ -178,7 +190,6 @@ export default function Home() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Unos poruke */}
         <div className="border-t border-[#16263D]/10 px-6 py-4 max-w-3xl mx-auto w-full">
           <div className="flex gap-2 items-end">
             <textarea
@@ -187,12 +198,12 @@ export default function Home() {
               onKeyDown={handleKeyDown}
               rows={2}
               placeholder="Postavi pitanje…"
-              className="flex-1 resize-none rounded-md border border-[#16263D]/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#16263D]/30 bg-white"
+              className="flex-1 resize-none rounded-md border border-[#16263D]/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#16263D]/30 bg-white shadow-sm"
             />
             <button
-              onClick={sendMessage}
-              disabled={loading}
-              className="rounded-md bg-[#16263D] text-[#F7F3EC] px-4 py-2 hover:bg-[#16263D]/90 disabled:opacity-50 transition"
+              onClick={() => sendMessage()}
+              disabled={loading || !input.trim()}
+              className="rounded-md bg-[#16263D] text-[#F7F3EC] px-4 py-2 hover:bg-[#16263D]/90 disabled:opacity-50 transition h-[42px]"
             >
               Pošalji
             </button>
@@ -204,14 +215,15 @@ export default function Home() {
         </div>
       </main>
 
-      {/* PDF Modal Render */}
       {isPdfModalOpen && (
-        <PdfUploader onClose={() => setIsPdfModalOpen(false)} />
+        <PdfUploader 
+          onClose={() => setIsPdfModalOpen(false)} 
+          onUploadSuccess={handleUploadSuccess} 
+        />
       )}
 
-      {/* Toast notifikacija za greške */}
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-md shadow-lg text-sm z-50">
+        <div className="fixed bottom-6 right-6 bg-[#16263D] text-[#F7F3EC] px-4 py-3 rounded-md shadow-xl text-sm z-50">
           {toast}
         </div>
       )}
