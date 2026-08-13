@@ -6,6 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ chatId: string }> }
 ) {
   const { chatId } = await params;
+  
 
   const { data, error } = await supabaseAdmin
     .from('messages')
