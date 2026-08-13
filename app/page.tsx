@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import PdfUploader from '@/app/components/PdfUploader';
+import Sidebar from '@/app/components/Sidebar';
 
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
@@ -12,7 +14,31 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function deleteChat(chatId: string) {
+    // Sprečavamo slučajno kliktanje
+    if (!confirm('Da li ste sigurni da želite da obrišete ovaj razgovor?')) return;
+
+    try {
+      const res = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Greška');
+
+      // Ako smo obrisali trenutno otvoren chat, resetujemo ekran
+      if (activeChatId === chatId) {
+        setActiveChatId(null);
+        setMessages([]);
+      }
+
+      // Osvežavamo listu razgovora
+      loadChats();
+      showToast('Razgovor obrisan.');
+    } catch {
+      showToast('Greška pri brisanju razgovora.');
+    }
+  }
 
   useEffect(() => {
     loadChats();
@@ -88,7 +114,6 @@ export default function Home() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter pravi novi red — slanje samo klikom na dugme (izbor 18B)
     if (e.key === 'Enter' && e.shiftKey) return;
   }
 
@@ -98,32 +123,20 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen relative">
       {/* Sidebar */}
-      <aside className="w-64 shrink-0 bg-[#16263D] text-[#F7F3EC] flex flex-col p-4">
-        <button
-          onClick={newChat}
-          className="mb-4 rounded-md border border-[#F7F3EC]/30 px-3 py-2 text-sm hover:bg-[#F7F3EC]/10 transition"
-        >
-          + Novi razgovor
-        </button>
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {chats.map((chat) => (
-            <button
-              key={chat.id}
-              onClick={() => openChat(chat.id)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm truncate transition ${
-                activeChatId === chat.id ? 'bg-[#F7F3EC]/15' : 'hover:bg-[#F7F3EC]/10'
-              }`}
-            >
-              {chat.title}
-            </button>
-          ))}
-        </div>
-      </aside>
+      {/* Nova Sidebar Komponenta */}
+      <Sidebar
+        chats={chats}
+        activeChatId={activeChatId}
+        onNewChat={newChat}
+        onOpenChat={openChat}
+        onOpenPdfModal={() => setIsPdfModalOpen(true)}
+        onDeleteChat={deleteChat}
+      />
 
       {/* Glavni deo */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col z-0">
         <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full">
           {messages.length === 0 && (
             <p className="text-[#16263D]/50 text-center mt-20">
@@ -134,11 +147,10 @@ export default function Home() {
           {messages.map((m, i) => (
             <div key={i} className={`mb-6 ${m.role === 'user' ? 'text-right' : ''}`}>
               <div
-                className={`inline-block max-w-[85%] rounded-lg px-4 py-3 text-left leading-relaxed ${
-                  m.role === 'user'
+                className={`inline-block max-w-[85%] rounded-lg px-4 py-3 text-left leading-relaxed ${m.role === 'user'
                     ? 'bg-[#16263D] text-[#F7F3EC]'
                     : 'bg-white border border-[#16263D]/10'
-                }`}
+                  }`}
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
@@ -186,20 +198,23 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Fiksna napomena o halucinacijama (izbor 20A) */}
           <p className="text-xs text-[#16263D]/40 text-center mt-2">
             AI može da pogreši — uvek proveri odgovor u originalnom izvoru.
           </p>
         </div>
       </main>
 
-      {/* Toast notifikacija za greške (izbor 23A) */}
+      {/* PDF Modal Render */}
+      {isPdfModalOpen && (
+        <PdfUploader onClose={() => setIsPdfModalOpen(false)} />
+      )}
+
+      {/* Toast notifikacija za greške */}
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-md shadow-lg text-sm">
+        <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-md shadow-lg text-sm z-50">
           {toast}
         </div>
       )}
     </div>
   );
-  
 }
