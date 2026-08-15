@@ -30,17 +30,28 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isAuthPage =
-    request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/register';
+  const pathname = request.nextUrl.pathname;
 
-  // Nije ulogovan i pokušava da ode bilo gde osim login/register → preusmeri na login
-  if (!user && !isAuthPage) {
+  // 1. Definišemo stranice za autentifikaciju (na njih ne smeš ako si VEĆ ulogovan)
+  const isAuthPage = 
+    pathname === '/login' || 
+    pathname === '/register' || 
+    pathname === '/forgot-password';
+
+  // 2. Definišemo sistemsku rutu za potvrdu linka iz mejla (mora uvek biti dostupna)
+  const isCallbackRoute = pathname.startsWith('/auth/callback');
+
+  // 3. DODATO: Dozvoljavamo rutu za promenu lozinke (mora biti dostupna da bi klijent pročitao token)
+  const isResetPage = pathname === '/reset-password';
+
+  // Nije ulogovan i pokušava da ode bilo gde osim na Auth stranice, Callback ili Reset -> preusmeri na login
+  if (!user && !isAuthPage && !isCallbackRoute && !isResetPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
-  // Ulogovan je i pokušava da ode na login/register → preusmeri na glavni interfejs
+  // Ulogovan je (ima aktivnu ili recovery sesiju) i pokušava da ode na Auth stranice -> preusmeri na glavni interfejs
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/';
