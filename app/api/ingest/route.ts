@@ -2,9 +2,14 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { extractText, getDocumentProxy } from 'unpdf';
+import { requireUser } from '@/lib/require-user';
 
 export async function POST(req: Request) {
   try {
+    // 0. Proveravamo da li je korisnik prijavljen
+    const { user, errorResponse } = await requireUser();
+    if (!user) return errorResponse!;
+
     const formData = await req.formData();
     const file = formData.get('file') as File;
 
@@ -25,10 +30,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'PDF ne sadrži tekst ili je skenirana slika (potreban je OCR).' }, { status: 400 });
     }
 
-    // 3. Upisujemo dokument u 'documents' tabelu
+    // 3. Upisujemo dokument u 'documents' tabelu, vezan za ulogovanog korisnika
     const { data: document, error: docError } = await supabaseAdmin
       .from('documents')
-      .insert({ title: file.name })
+      .insert({ title: file.name, user_id: user.id })
       .select('id')
       .single();
 

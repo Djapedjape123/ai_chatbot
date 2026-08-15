@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+// Dodajemo import server klijenta da bismo proverili ko je ulogovan
+import { createClient } from '@/lib/supabase/server';
 
 const SYSTEM_PROMPT = (context: string) => `Ti si pravni asistent za advokatskog pripravnika. Odgovaraš isključivo na srpskom jeziku, kolegijalnim i predusretljivim tonom, kao iskusna koleginica koja pomaže.
 
@@ -15,19 +17,40 @@ ${context || '(Nije pronađen relevantan izvod u priloženoj literaturi za ovo p
 
 export async function POST(req: Request) {
   try {
+    // 0. Autentifikacija: Proveravamo da li je korisnik ulogovan
+    const supabaseServer = await createClient();
+    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Niste ulogovani ili je sesija istekla.' }, { status: 401 });
+    }
+
     const { query, chatId } = await req.json();
 
     if (!query || typeof query !== 'string') {
       return NextResponse.json({ error: 'Pitanje nije poslato.' }, { status: 400 });
     }
 
-    // 1. Ako nema chatId, pravimo novi razgovor
     let activeChatId = chatId;
-    if (!activeChatId) {
+
+    // 1. Autorizacija i kreiranje chata
+    if (activeChatId) {
+      // Ako chat već postoji, proveravamo da li pripada ulogovanom korisniku!
+      const { data: existingChat, error: chatCheckError } = await supabaseAdmin
+        .from('chats')
+        .select('id, user_id')
+        .eq('id', activeChatId)
+        .single();
+
+      if (chatCheckError || !existingChat || existingChat.user_id !== user.id) {
+        return NextResponse.json({ error: 'Nemate pristup ovom razgovoru.' }, { status: 403 });
+      }
+    } else {
+      // Ako nema chatId, pravimo novi razgovor i vezujemo ga za user.id
       const title = query.length > 50 ? query.slice(0, 50) + '…' : query;
       const { data: newChat, error: chatError } = await supabaseAdmin
         .from('chats')
-        .insert({ title })
+        .insert({ title, user_id: user.id }) // <-- KLJUČNO: Upisujemo vlasnika
         .select('id')
         .single();
 
@@ -79,10 +102,14 @@ export async function POST(req: Request) {
     const voyageData = await voyageRes.json();
     const queryEmbedding = voyageData.data[0].embedding;
 
-    // 5. Pretraga relevantnih pasusa
+    // 5. Pretraga relevantnih pasusa sa FILTEROM ZA KORISNIKA
     const { data: chunks, error: searchError } = await supabaseAdmin.rpc(
       'match_document_chunks',
-      { query_embedding: queryEmbedding, match_count: 8 }
+      { 
+        query_embedding: queryEmbedding, 
+        match_count: 8,
+        filter_user_id: user.id // <-- KLJUČNO: Traži samo po dokumentima ulogovanog korisnika
+      }
     );
 
     if (searchError) {
@@ -94,7 +121,7 @@ export async function POST(req: Request) {
       .map((c: any) => `[Izvor: ${c.document_title}]\n${c.content}`)
       .join('\n\n---\n\n');
 
-    // 6. Slanje Claude-u
+    // 6. Slanje Claude-u (Ispravljen naziv modela u pravi)
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -103,7 +130,7 @@ export async function POST(req: Request) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        model: 'claude-3-5-sonnet-20240620', // ISPRAVLJENO: Zvaničan string za Claude 3.5 Sonnet
         max_tokens: 4096,
         system: SYSTEM_PROMPT(context),
         messages: [
