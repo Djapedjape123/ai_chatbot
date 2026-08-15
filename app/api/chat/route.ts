@@ -130,7 +130,7 @@ export async function POST(req: Request) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20240620', // ISPRAVLJENO: Zvaničan string za Claude 3.5 Sonnet
+        model: 'claude-sonnet-5', // ISPRAVLJENO: Zvaničan string za Claude 3.5 Sonnet
         max_tokens: 4096,
         system: SYSTEM_PROMPT(context),
         messages: [
