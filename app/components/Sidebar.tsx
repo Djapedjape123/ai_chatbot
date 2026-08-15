@@ -1,5 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+
 type Chat = { id: string; title: string; created_at: string };
 
 interface SidebarProps {
@@ -19,6 +22,15 @@ export default function Sidebar({
   onOpenPdfModal,
   onDeleteChat,
 }: SidebarProps) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.refresh();
+    router.push('/login');
+  }
+
   return (
     <aside className="w-64 shrink-0 bg-[#16263D] text-[#F7F3EC] flex flex-col p-4 z-10">
       <button
@@ -42,15 +54,12 @@ export default function Sidebar({
               activeChatId === chat.id ? 'bg-[#F7F3EC]/15' : 'hover:bg-[#F7F3EC]/10'
             }`}
           >
-            {/* Dugme za otvaranje chata zauzima većinu prostora */}
             <button
               onClick={() => onOpenChat(chat.id)}
               className="flex-1 text-left px-3 py-2 text-sm truncate"
             >
               {chat.title}
             </button>
-            
-            {/* Dugme za brisanje koje se pojavljuje na hover */}
             <button
               onClick={() => onDeleteChat(chat.id)}
               className="px-2 py-2 text-[#F7F3EC]/40 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
@@ -61,6 +70,13 @@ export default function Sidebar({
           </div>
         ))}
       </div>
+
+      <button
+        onClick={handleLogout}
+        className="mt-4 pt-4 border-t border-[#F7F3EC]/10 text-sm text-[#F7F3EC]/60 hover:text-[#F7F3EC] transition text-left"
+      >
+        ⏻ Odjavi se
+      </button>
     </aside>
   );
 }
