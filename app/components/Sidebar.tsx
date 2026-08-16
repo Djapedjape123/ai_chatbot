@@ -75,7 +75,7 @@ export default function Sidebar({
         onClick={handleLogout}
         className="mt-4 pt-4 border-t border-[#F7F3EC]/10 text-sm text-[#F7F3EC]/60 hover:text-[#F7F3EC] transition text-left"
       >
-        ⏻ Odjavi se
+        Odjavi se
       </button>
     </aside>
   );
