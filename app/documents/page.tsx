@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getUserDocuments, deleteDocument } from '@/app/actions/documents';
+import Link from 'next/link';
 
 interface DocumentItem {
   id: string;
@@ -53,7 +54,11 @@ export default function DocumentsPage() {
               Pregled i upravljanje učitanim PDF fajlovima za AI pretragu.
             </p>
           </div>
+          <Link href="/" className="mb-5 text-xs text-blue-600 hover:text-blue-800 font-medium border border-blue-200 bg-blue-50 hover:bg-blue-100 rounded px-3 py-1.5 transition">
+            Nazad na Chat
+          </Link>
         </div>
+
 
         {loading ? (
           <div className="bg-white rounded-lg border border-[#16263D]/10 p-8 text-center text-[#16263D]/60">
@@ -92,12 +97,14 @@ export default function DocumentsPage() {
                   >
                     {deletingId === doc.id ? 'Brisanje…' : 'Obriši'}
                   </button>
+
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
     </div>
   );
 }
