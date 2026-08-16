@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
 
 type Chat = { id: string; title: string; created_at: string };
 
@@ -45,14 +46,20 @@ export default function Sidebar({
       >
         📄 Dodaj PDF literaturu
       </button>
+      <Link
+        href="/documents"
+        className="flex items-center space-x-3 px-3 py-2.5 rounded-md text-[#16263D] hover:bg-[#16263D]/5 transition text-sm font-medium"
+      >
+        {/* <span className="text-base">📄</span> */}
+        <span className="mb-4 text-white rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2">Pogledaj Vaše dokumente</span>
+      </Link>
 
       <div className="flex-1 overflow-y-auto space-y-1 border-t border-[#F7F3EC]/10 pt-4">
         {chats.map((chat) => (
           <div
             key={chat.id}
-            className={`group flex items-center justify-between w-full rounded-md transition ${
-              activeChatId === chat.id ? 'bg-[#F7F3EC]/15' : 'hover:bg-[#F7F3EC]/10'
-            }`}
+            className={`group flex items-center justify-between w-full rounded-md transition ${activeChatId === chat.id ? 'bg-[#F7F3EC]/15' : 'hover:bg-[#F7F3EC]/10'
+              }`}
           >
             <button
               onClick={() => onOpenChat(chat.id)}
