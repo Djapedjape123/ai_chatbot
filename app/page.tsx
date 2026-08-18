@@ -1,235 +1,113 @@
-'use client';
+import Link from 'next/link';
+import Image from 'next/image';
 
-import { useEffect, useRef, useState } from 'react';
-import PdfUploader from '@/app/components/PdfUploader';
-import Sidebar from '@/app/components/Sidebar';
-
-type Message = { id?: string; role: 'user' | 'assistant'; content: string };
-type Chat = { id: string; title: string; created_at: string };
-
-export default function Home() {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
-  
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    loadChats();
-  }, []);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  async function loadChats() {
-    try {
-      const res = await fetch('/api/chats');
-      const data = await res.json();
-      setChats(data.chats || []);
-    } catch {
-      showToast('Greška pri učitavanju razgovora.');
-    }
-  }
-
-  async function openChat(chatId: string) {
-    setActiveChatId(chatId);
-    try {
-      const res = await fetch(`/api/chats/${chatId}/messages`);
-      const data = await res.json();
-      setMessages(data.messages || []);
-    } catch {
-      showToast('Greška pri učitavanju poruka.');
-    }
-  }
-
-  function newChat() {
-    setActiveChatId(null);
-    setMessages([]);
-  }
-
-  async function deleteChat(chatId: string) {
-    if (!confirm('Da li ste sigurni da želite da obrišete ovaj razgovor?')) return;
-
-    try {
-      const res = await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Greška');
-
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-        setMessages([]);
-      }
-      
-      loadChats();
-      showToast('Razgovor obrisan.');
-    } catch {
-      showToast('Greška pri brisanju razgovora.');
-    }
-  }
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 4000);
-  }
-
-  async function sendMessage(autoQuery?: string) {
-    const query = autoQuery || input.trim();
-    if (!query || loading) return;
-
-    if (!autoQuery) {
-      setInput('');
-      setMessages((prev) => [...prev, { role: 'user', content: query }]);
-    }
-
-    setLoading(true);
-
-    
-
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, chatId: activeChatId }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        showToast(data.error || 'Došlo je do greške.');
-        return;
-      }
-
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
-
-      if (!activeChatId) {
-        setActiveChatId(data.chatId);
-        loadChats();
-      }
-    } catch {
-      showToast('Greška pri povezivanju. Pokušajte ponovo.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleUploadSuccess(fileName: string) {
-    setIsPdfModalOpen(false); 
-    newChat(); 
-    
-    const autoPrompt = `Upravo sam dodao pravni dokument pod nazivom "${fileName}". Molim te, pronađi ga i napravi mi kratak pregled onoga što on sadrži, koje su mu glavne teme i izvuci par najvažnijih teza, kako bismo mogli da započnemo rad na njemu.`;
-    
-    setTimeout(() => {
-      sendMessage(autoPrompt);
-    }, 200);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  }
-
-  function copyText(text: string) {
-    navigator.clipboard.writeText(text);
-    showToast('Kopirano.');
-  }
-
+export default function LandingPage() {
   return (
-    <div className="flex h-screen relative">
-      <Sidebar 
-        chats={chats}
-        activeChatId={activeChatId}
-        onNewChat={newChat}
-        onOpenChat={openChat}
-        onOpenPdfModal={() => setIsPdfModalOpen(true)}
-        onDeleteChat={deleteChat}
-      />
+    <div className="min-h-screen bg-[#F7F3EC] text-[#16263D] flex flex-col font-sans selection:bg-[#16263D] selection:text-[#F7F3EC]">
+      
+      {/* --- NAVBAR --- */}
+      <nav className="w-full flex items-center justify-between px-6 py-5 md:px-12 border-b border-[#16263D]/10">
+        <div className="text-xl font-bold tracking-tight">
+          Pravni Asistent<span className="text-[#16263D]/50">.ai</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <Link 
+            href="/login" 
+            className="text-sm font-medium hover:opacity-70 transition hidden sm:block"
+          >
+            Prijavi se
+          </Link>
+          <Link 
+            href="/register" 
+            className="text-sm font-medium bg-[#16263D] text-[#F7F3EC] px-4 py-2 rounded-md hover:bg-[#16263D]/90 transition"
+          >
+            Započni besplatno
+          </Link>
+        </div>
+      </nav>
 
-      <main className="flex-1 flex flex-col z-0">
-        <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full">
-          {messages.length === 0 && (
-            <p className="text-[#16263D]/50 text-center mt-20">
-              Postavi pravno pitanje da započneš razgovor.
-            </p>
-          )}
-
-          {messages.map((m, i) => (
-            <div key={i} className={`mb-6 ${m.role === 'user' ? 'text-right' : ''}`}>
-              <div
-                className={`inline-block max-w-[85%] rounded-lg px-4 py-3 text-left leading-relaxed ${
-                  m.role === 'user'
-                    ? 'bg-[#16263D] text-[#F7F3EC]'
-                    : 'bg-white border border-[#16263D]/10 shadow-sm'
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              </div>
-              {m.role === 'assistant' && (
-                <div className="mt-1 text-left">
-                  <button
-                    onClick={() => copyText(m.content)}
-                    className="text-xs text-[#16263D]/50 hover:text-[#16263D] transition"
-                  >
-                    Kopiraj tekst
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {loading && (
-            <div className="mb-6">
-              <div className="inline-block rounded-lg px-4 py-3 bg-white border border-[#16263D]/10 shadow-sm">
-                <span className="animate-pulse text-[#16263D]/50 text-sm">Pretražujem bazu i razmišljam…</span>
-              </div>
-            </div>
-          )}
-
-          <div ref={bottomRef} />
+      {/* --- HERO SECTIONS --- */}
+      <main className="flex-1 flex flex-col items-center justify-center text-center px-6 py-20 md:py-32 max-w-5xl mx-auto">
+        
+        {/* Značka / Bedž */}
+        <div className="mb-6 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#16263D]/20 bg-white text-xs font-semibold text-[#16263D]">
+          <span className="flex h-2 w-2 rounded-full bg-green-500"></span>
+          Dizajnirano isključivo za pravnike
         </div>
 
-        <div className="border-t border-[#16263D]/10 px-6 py-4 max-w-3xl mx-auto w-full">
-          <div className="flex gap-2 items-end">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={2}
-              placeholder="Postavi pitanje…"
-              className="flex-1 resize-none rounded-md border border-[#16263D]/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#16263D]/30 bg-white shadow-sm"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={loading || !input.trim()}
-              className="rounded-md bg-[#16263D] text-[#F7F3EC] px-4 py-2 hover:bg-[#16263D]/90 disabled:opacity-50 transition h-[42px]"
-            >
-              Pošalji
-            </button>
-          </div>
+        <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight mb-6">
+          Pretražujte i analizirajte <br className="hidden md:block"/> vašu dokumentaciju brže.
+        </h1>
+        
+        <p className="text-lg md:text-xl text-[#16263D]/70 max-w-2xl mb-10 leading-relaxed">
+          Zaboravite na sate provedene u pretraživanju zakona i predmeta. 
+          Ubacite PDF, postavite pitanje i dobijte tačan odgovor zasnovan isključivo na vašim dokumentima.
+        </p>
 
-          <p className="text-xs text-[#16263D]/40 text-center mt-2">
-            AI može da pogreši — uvek proveri odgovor u originalnom izvoru.
-          </p>
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
+          <Link 
+            href="/register" 
+            className="w-full sm:w-auto px-8 py-4 rounded-md bg-[#16263D] text-[#F7F3EC] text-lg font-medium hover:bg-[#16263D]/90 transition shadow-lg shadow-[#16263D]/10"
+          >
+            Isprobaj odmah
+          </Link>
+          <Link 
+            href="/login" 
+            className="w-full sm:w-auto px-8 py-4 rounded-md bg-white border border-[#16263D]/20 text-lg font-medium hover:bg-gray-50 transition"
+          >
+            Imam nalog
+          </Link>
         </div>
       </main>
 
-      {isPdfModalOpen && (
-        <PdfUploader 
-          onClose={() => setIsPdfModalOpen(false)} 
-          onUploadSuccess={handleUploadSuccess} 
-        />
-      )}
+      {/* --- HOW IT WORKS (Features) --- */}
+      <section className="bg-white border-t border-[#16263D]/10 py-20 px-6">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-16">
+            Kako funkcioniše?
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 text-center">
+            {/* Korak 1 */}
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#F7F3EC] flex items-center justify-center text-3xl mb-6 border border-[#16263D]/10">
+                📄
+              </div>
+              <h3 className="text-xl font-semibold mb-3">1. Ubacite literaturu</h3>
+              <p className="text-[#16263D]/60 leading-relaxed">
+                Otpremite vaše PDF fajlove sa zakonima, presudama ili ugovorima u bezbedno okruženje.
+              </p>
+            </div>
 
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-[#16263D] text-[#F7F3EC] px-4 py-3 rounded-md shadow-xl text-sm z-50">
-          {toast}
+            {/* Korak 2 */}
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#F7F3EC] flex items-center justify-center text-3xl mb-6 border border-[#16263D]/10">
+                💬
+              </div>
+              <h3 className="text-xl font-semibold mb-3">2. Postavite pitanje</h3>
+              <p className="text-[#16263D]/60 leading-relaxed">
+                Pitajte asistenta na prirodnom jeziku sve što vas zanima u vezi sa vašim slučajem.
+              </p>
+            </div>
+
+            {/* Korak 3 */}
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#F7F3EC] flex items-center justify-center text-3xl mb-6 border border-[#16263D]/10">
+                ⚡
+              </div>
+              <h3 className="text-xl font-semibold mb-3">3. Dobijte odgovor</h3>
+              <p className="text-[#16263D]/60 leading-relaxed">
+                Dobijte precizan odgovor generisan ISKLJUČIVO na osnovu literature koju ste vi ubacili.
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+      </section>
+
+      {/* --- FOOTER --- */}
+      <footer className="w-full text-center py-8 text-sm text-[#16263D]/40">
+        &copy; {new Date().getFullYear()} Pravni Asistent. Sva prava zadržana.
+      </footer>
     </div>
   );
 }

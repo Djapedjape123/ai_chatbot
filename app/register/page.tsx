@@ -55,7 +55,7 @@ export default function RegisterPage() {
     }
 
     router.refresh();
-    router.push('/');
+    router.push('/chat');
   }
 
   return (
