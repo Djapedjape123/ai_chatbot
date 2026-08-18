@@ -25,36 +25,37 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // OVO je bitno: osvežava token pre nego što istekne
+  // Osvežava token pre nego što istekne
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
 
-  // 1. Definišemo stranice za autentifikaciju (na njih ne smeš ako si VEĆ ulogovan)
+  // 1. Stranice za prijavu
   const isAuthPage = 
     pathname === '/login' || 
     pathname === '/register' || 
     pathname === '/forgot-password';
 
-  // 2. Definišemo sistemsku rutu za potvrdu linka iz mejla (mora uvek biti dostupna)
-  const isCallbackRoute = pathname.startsWith('/auth/callback');
+  // 2. Početna (Landing) stranica
+  const isHomePage = pathname === '/';
 
-  // 3. DODATO: Dozvoljavamo rutu za promenu lozinke (mora biti dostupna da bi klijent pročitao token)
+  // 3. Sistemske rute
+  const isCallbackRoute = pathname.startsWith('/auth/callback');
   const isResetPage = pathname === '/reset-password';
 
-  // Nije ulogovan i pokušava da ode bilo gde osim na Auth stranice, Callback ili Reset -> preusmeri na login
-  if (!user && !isAuthPage && !isCallbackRoute && !isResetPage) {
+  // PRAVILO 1: Nije ulogovan, a pokušava da ode negde što NIJE javno (Auth, Landing, Callback, Reset) -> baci ga na login
+  if (!user && !isAuthPage && !isHomePage && !isCallbackRoute && !isResetPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
-  // Ulogovan je (ima aktivnu ili recovery sesiju) i pokušava da ode na Auth stranice -> preusmeri na glavni interfejs
-  if (user && isAuthPage) {
+  // PRAVILO 2: Ulogovan je, a pokušava da ode na Auth stranice ILI na Landing stranicu -> baci ga na glavni /chat interfejs
+  if (user && (isAuthPage || isHomePage)) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/chat';
     return NextResponse.redirect(url);
   }
 
