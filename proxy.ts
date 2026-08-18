@@ -6,6 +6,8 @@ export async function proxy(request: NextRequest) {
     request: { headers: request.headers },
   });
 
+  // Kreiramo Supabase klijenta sa SSR podrškom
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -61,6 +63,8 @@ export async function proxy(request: NextRequest) {
 
   return response;
 }
+
+// Ova konfiguracija osigurava da se proxy primenjuje na sve rute osim onih koje su eksplicitno izuzete (npr. statički fajlovi, slike, itd.)
 
 export const config = {
   matcher: [

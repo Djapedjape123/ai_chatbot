@@ -30,8 +30,7 @@ export default function Sidebar({
     // 1. Brišemo sesiju iz Supabase-a
     await supabase.auth.signOut();
     
-    // 2. Radimo "Hard Redirect" koji ubija sav Next.js keš 
-    // i sigurno nas vodi na početnu stranu
+   
     window.location.href = '/';
   }
 
