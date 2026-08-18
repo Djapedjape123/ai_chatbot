@@ -5,6 +5,7 @@ const DAILY_MESSAGE_LIMIT = 40;
 
 export async function checkRateLimit(userId: string) {
   const { data: count, error } = await supabaseAdmin.rpc('get_daily_message_count', {
+    
     input_user_id: userId,
   });
 
