@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import PdfUploader from '@/app/components/PdfUploader';
 import Sidebar from '@/app/components/Sidebar';
+// 1. IMPORT NOVIH FUNKCIJA ZA WORD
+import { exportSingleMessageToWord, exportFullChatToWord } from '@/lib/exportWord';
 
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
@@ -87,9 +89,6 @@ export default function Home() {
 
     setLoading(true);
 
-    
-
-
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -139,6 +138,9 @@ export default function Home() {
     showToast('Kopirano.');
   }
 
+  // Pronalazimo naslov trenutnog chata za ime fajla pri preuzimanju celog razgovora
+  const activeChatTitle = chats.find(c => c.id === activeChatId)?.title || 'Pravni_Razgovor';
+
   return (
     <div className="flex h-screen relative">
       <Sidebar 
@@ -150,8 +152,22 @@ export default function Home() {
         onDeleteChat={deleteChat}
       />
 
-      <main className="flex-1 flex flex-col z-0">
+      <main className="flex-1 flex flex-col z-0 bg-[#F7F3EC]">
         <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full">
+          
+          {/* 2. DUGME ZA IZVOZ CELOG RAZGOVORA */}
+          {messages.length > 0 && (
+            <div className="flex justify-end mb-6">
+              <button
+                onClick={() => exportFullChatToWord(messages, activeChatTitle)}
+                className="flex items-center gap-2 text-sm bg-white border border-[#16263D]/20 px-4 py-2 rounded-md hover:bg-gray-50 transition text-[#16263D] font-medium shadow-sm"
+                title="Preuzmi celu istoriju ovog razgovora kao Word dokument"
+              >
+                📝 Preuzmi ceo zapisnik (.docx)
+              </button>
+            </div>
+          )}
+
           {messages.length === 0 && (
             <p className="text-[#16263D]/50 text-center mt-20">
               Postavi pravno pitanje da započneš razgovor.
@@ -169,13 +185,23 @@ export default function Home() {
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
+              
               {m.role === 'assistant' && (
-                <div className="mt-1 text-left">
+                <div className="mt-2 text-left flex items-center justify-between max-w-[85%]">
                   <button
                     onClick={() => copyText(m.content)}
                     className="text-xs text-[#16263D]/50 hover:text-[#16263D] transition"
                   >
                     Kopiraj tekst
+                  </button>
+                  
+                  {/* 3. DUGME ZA IZVOZ POJEDINAČNOG ODGOVORA */}
+                  <button
+                    onClick={() => exportSingleMessageToWord(m.content, 'Pravni_Akt')}
+                    className="text-xs text-[#16263D]/60 hover:text-[#16263D] flex items-center gap-1.5 border border-[#16263D]/15 bg-white/60 px-2.5 py-1.5 rounded-md hover:bg-white transition"
+                    title="Preuzmi samo ovaj odgovor kao Word dokument"
+                  >
+                    📄 Izvezi u Word
                   </button>
                 </div>
               )}
@@ -193,7 +219,7 @@ export default function Home() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="border-t border-[#16263D]/10 px-6 py-4 max-w-3xl mx-auto w-full">
+        <div className="border-t border-[#16263D]/10 px-6 py-4 max-w-3xl mx-auto w-full bg-[#F7F3EC]">
           <div className="flex gap-2 items-end">
             <textarea
               value={input}
