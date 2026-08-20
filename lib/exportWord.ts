@@ -8,7 +8,7 @@ export async function exportSingleMessageToWord(content: string, filename = 'Pra
   // Delimo tekst po novim redovima kako bi u Wordu svaki pasus bio odvojen
   const paragraphs = content.split('\n').map((line) => {
     return new Paragraph({
-      alignment: AlignmentType.BOTH, // Zamenjeno JUSTIFY sa BOTH (za obostrano poravnanje)
+      alignment: AlignmentType.BOTH, 
       spacing: { after: 120 },
       children: [
         new TextRun({
