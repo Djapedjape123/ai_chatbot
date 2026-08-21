@@ -340,6 +340,8 @@ export default function Home() {
         />
       )}
 
+      ///pravimo sutra deo za templejte chata
+
       {toast && (
         <div className="fixed bottom-6 right-6 bg-[#16263D] text-[#F7F3EC] px-4 py-3 rounded-md shadow-xl text-sm z-50">
           {toast}
