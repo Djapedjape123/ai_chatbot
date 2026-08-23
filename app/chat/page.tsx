@@ -4,10 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 import PdfUploader from '@/app/components/PdfUploader';
 import Sidebar from '@/app/components/Sidebar';
 import { exportSingleMessageToWord, exportFullChatToWord } from '@/lib/exportWord';
-import * as mammoth from 'mammoth'; // Import za čitanje Word fajlova
+import * as mammoth from 'mammoth';
 
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
+
+// 1. Definisani šabloni za brzi unos
+const defaultTemplates = [
+  { icon: '📝', text: 'Napiši primer ugovora o zajmu' },
+  { icon: '⚖️', text: 'Objasni mi razliku između...' },
+  { icon: '🔎', text: 'Koji zakon reguliše...' }
+];
+
+const fileTemplates = [
+  { icon: '⚠️', text: 'Analiziraj pravne rizike u ovom tekstu' },
+  { icon: '📌', text: 'Izvuci ključne obaveze ugovornih strana' },
+  { icon: '📖', text: 'Napravi kratak sažetak za klijenta' }
+];
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -18,12 +31,14 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   
-  // Stanja za prikačeni fajl
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFileText, setAttachedFileText] = useState<string | null>(null);
   
   const bottomRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Referenca za skriveni file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 2. Referenca za polje za unos (kako bismo ga automatski fokusirali)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     loadChats();
@@ -57,7 +72,7 @@ export default function Home() {
   function newChat() {
     setActiveChatId(null);
     setMessages([]);
-    removeAttachment(); // Čistimo i prikačeni fajl kad otvorimo novi chat
+    removeAttachment(); 
   }
 
   async function deleteChat(chatId: string) {
@@ -79,14 +94,11 @@ export default function Home() {
     }
   }
 
-  /// Funkcija za prikazivanje toast poruka
-
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
   }
 
-  // Funkcija za čitanje zakačenog Word fajla
   async function handleFileAttachment(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -96,44 +108,58 @@ export default function Home() {
       return;
     }
 
+    // Dodat bezbednosni korak za prazne fajlove
+    if (file.size === 0) {
+      showToast('Ovaj fajl je prazan (0 bajtova). Ubaci pravi dokument.');
+      return;
+    }
+
     setAttachedFileName(file.name);
     showToast('Učitavam fajl...');
     
-    try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
         const arrayBuffer = event.target?.result as ArrayBuffer;
         if (arrayBuffer) {
           const result = await mammoth.extractRawText({ arrayBuffer });
           setAttachedFileText(result.value);
           showToast('Fajl je uspešno učitan i spreman!');
         }
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      showToast('Greška pri čitanju fajla.');
-      setAttachedFileName(null);
-      setAttachedFileText(null);
-    }
+      } catch (error) {
+        showToast('Fajl je oštećen ili nije validan Word dokument.');
+        removeAttachment();
+      }
+    };
+
+    reader.onerror = () => {
+      showToast('Greška pri čitanju fajla sa računara.');
+      removeAttachment();
+    };
+
+    reader.readAsArrayBuffer(file);
     
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  // Funkcija za uklanjanje zakačenog fajla pre slanja
   function removeAttachment() {
     setAttachedFileName(null);
     setAttachedFileText(null);
   }
 
+  // 3. Funkcija za okidanje šablona
+  function handleTemplateClick(templateText: string) {
+    setInput(templateText);
+    textareaRef.current?.focus(); // Automatski stavlja kursor u textarea
+  }
+
   async function sendMessage(autoQuery?: string) {
     const baseQuery = autoQuery || input.trim();
-    // Dozvoljavamo slanje ako ima teksta ILI ako ima zakačen fajl
     if ((!baseQuery && !attachedFileText) || loading) return;
 
     let finalQueryForAI = baseQuery;
     let queryForDisplay = baseQuery;
 
-    // Ako korisnik šalje fajl, spajamo tekst fajla i njegov zahtev
     if (attachedFileText) {
       const defaultReq = 'Molim te detaljno pročitaj i analiziraj ovaj dokument.';
       const userReq = baseQuery ? baseQuery : defaultReq;
@@ -145,7 +171,7 @@ export default function Home() {
     if (!autoQuery) {
       setInput('');
       setMessages((prev) => [...prev, { role: 'user', content: queryForDisplay }]);
-      removeAttachment(); // Čistimo zakačeni fajl nakon što ga pošaljemo
+      removeAttachment(); 
     }
 
     setLoading(true);
@@ -200,6 +226,9 @@ export default function Home() {
   }
 
   const activeChatTitle = chats.find(c => c.id === activeChatId)?.title || 'Pravni_Razgovor';
+
+  // 4. Odlučujemo koje šablone prikazujemo na osnovu toga da li je fajl zakačen
+  const activeTemplates = attachedFileText ? fileTemplates : defaultTemplates;
 
   return (
     <div className="flex h-screen relative">
@@ -279,9 +308,8 @@ export default function Home() {
 
         <div className="border-t border-[#16263D]/10 px-6 py-4 max-w-3xl mx-auto w-full bg-[#F7F3EC]">
           
-          {/* Indikator zakačenog fajla iznad inputa */}
           {attachedFileName && (
-            <div className="mb-2 flex items-center gap-2 bg-white border border-[#16263D]/20 px-3 py-1.5 rounded-md shadow-sm w-fit">
+            <div className="mb-3 flex items-center gap-2 bg-white border border-[#16263D]/20 px-3 py-1.5 rounded-md shadow-sm w-fit">
                <span className="text-xs text-[#16263D] font-medium">📄 {attachedFileName}</span>
                <button 
                  onClick={removeAttachment} 
@@ -293,8 +321,23 @@ export default function Home() {
             </div>
           )}
 
+          {/* 5. Pametni Šabloni - Prikazuju se samo kada je polje prazno */}
+          {!input.trim() && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {activeTemplates.map((tpl, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleTemplateClick(tpl.text)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/60 border border-[#16263D]/10 text-xs text-[#16263D] hover:bg-white hover:border-[#16263D]/30 hover:shadow-sm transition-all duration-200"
+                >
+                  <span>{tpl.icon}</span>
+                  <span className="font-medium">{tpl.text}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2 items-end">
-            {/* Skriveni input za fajlove */}
             <input 
                type="file" 
                accept=".docx" 
@@ -303,7 +346,6 @@ export default function Home() {
                className="hidden" 
             />
             
-            {/* Dugme Spajalica */}
             <button
                onClick={() => fileInputRef.current?.click()}
                className="rounded-md border border-[#16263D]/20 bg-white text-[#16263D]/60 px-3 py-2 hover:bg-gray-50 hover:text-[#16263D] transition h-[42px] flex items-center justify-center shadow-sm"
@@ -313,6 +355,7 @@ export default function Home() {
             </button>
 
             <textarea
+              ref={textareaRef} // Povezana referenca za automatski fokus
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -342,8 +385,6 @@ export default function Home() {
         />
       )}
 
-      ///pravimo sutra deo za templejte chata
-
       {toast && (
         <div className="fixed bottom-6 right-6 bg-[#16263D] text-[#F7F3EC] px-4 py-3 rounded-md shadow-xl text-sm z-50">
           {toast}
@@ -351,5 +392,4 @@ export default function Home() {
       )}
     </div>
   );
-  
 }
