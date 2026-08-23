@@ -79,6 +79,8 @@ export default function Home() {
     }
   }
 
+  /// Funkcija za prikazivanje toast poruka
+
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
