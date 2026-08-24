@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Niste ulogovani ili je sesija istekla.' }, { status: 401 });
     }
 
-    // 0.5 Provera dnevnog limita
+    // 0.5 Provera dnevnog limita koji je postavljen u checkRateLimit funkciji 40 po korisniku
     const { allowed, errorResponse } = await checkRateLimit(user.id);
     if (!allowed) return errorResponse!;
 
