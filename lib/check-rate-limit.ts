@@ -5,17 +5,25 @@ const DAILY_MESSAGE_LIMIT = 40;
 
 export async function checkRateLimit(userId: string) {
   const { data: count, error } = await supabaseAdmin.rpc('get_daily_message_count', {
-    
     input_user_id: userId,
   });
 
   if (error) {
     console.error('Rate Limit Check Error:', error);
-    // Ako provera pukne iz tehničkih razloga, propuštamo zahtev umesto da blokiramo korisnika
-    return { allowed: true, errorResponse: null };
+    // FAIL-CLOSED: Ako baza ne odgovara, privremeno blokiramo zahtev da bismo zaštitili API kredite.
+    return { 
+      allowed: false, 
+      errorResponse: NextResponse.json(
+        { error: 'Sistem trenutno ne može da proveri vaš limit poruka. Molimo pokušajte ponovo za par trenutaka.' },
+        { status: 500 }
+      ) 
+    };
   }
 
-  if (count >= DAILY_MESSAGE_LIMIT) {
+  // Obavezno proveravamo i da li je count validan broj (fallback ako rpc vrati null)
+  const currentCount = count || 0;
+
+  if (currentCount >= DAILY_MESSAGE_LIMIT) {
     return {
       allowed: false,
       errorResponse: NextResponse.json(
