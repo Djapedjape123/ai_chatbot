@@ -129,6 +129,7 @@ export async function POST(req: Request) {
       });
 
     } catch (innerError) {
+      
       // ROLLBACK: Brisanje nekompletnog dokumenta iz baze ukoliko se desila bilo kakva greška!
       console.error('Proces obrade prekinut. Pokrećem rollback...', innerError);
       await supabaseAdmin.from('documents').delete().eq('id', document.id);
