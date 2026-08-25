@@ -3,6 +3,7 @@ import Hero from '@/app/components/Hero';
 import HowItWorks from '@/app/components/HowItWorks';
 import FeatureHighlights from '@/app/components/FeatureHighlights';
 import FaqSection from '@/app/components/FaqSection';
+import Footer from './components/Footer';
 
 
 export default function LandingPage() {
@@ -17,9 +18,7 @@ export default function LandingPage() {
         
       </main>
 
-      <footer className="w-full text-center py-8 text-sm text-[#16263D]/40 border-t border-[#16263D]/10 bg-white">
-        &copy; {new Date().getFullYear()} Pravni Asistent. Sva prava zadržana.
-      </footer>
+      <Footer/>
     </div>
   );
 }
