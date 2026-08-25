@@ -31,6 +31,7 @@ export async function deleteDocument(documentId: string) {
 
   // Zahvaljujući RLS-u i CASCADE-u, brisanjem reda iz `documents` 
   // baza sama briše i sve povezane `document_chunks`
+  // pregled baze
   const { error } = await supabase
     .from('documents')
     .delete()
