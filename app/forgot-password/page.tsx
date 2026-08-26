@@ -23,10 +23,7 @@ export default function ForgotPasswordPage() {
         ///app\auth\callback
 
         setLoading(true);
-        // ZAMENI OVO:
-        // redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`
-
-        // SA OVIM:
+       
         await supabase.auth.resetPasswordForEmail(email.trim(), {
             redirectTo: `${window.location.origin}/reset-password`,
         });

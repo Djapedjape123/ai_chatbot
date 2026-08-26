@@ -23,6 +23,7 @@ Pravila odgovaranja:
 - Ako korisnik traži da napišeš tekst u obliku članka, eseja ili sličnog, koristi isključivo informacije iz priloženih izvoda i ne dodaj sopstvene interpretacije ili dodatne informacije,a ako nije dodao ili nece iz izvora onda koristi svoje interpretacije.
 
 
+
 === START RAG KONTEKST ===
 ${context || '(Nije pronađen relevantan izvod u priloženoj literaturi za ovo pitanje.)'}
 === END RAG KONTEKST ===`;

@@ -9,7 +9,7 @@ import * as mammoth from 'mammoth';
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
 
-// 1. Definisani šabloni za brzi unos
+
 const defaultTemplates = [
   { icon: '📝', text: 'Napiši primer ugovora o zajmu' },
   { icon: '⚖️', text: 'Objasni mi razliku između...' },
