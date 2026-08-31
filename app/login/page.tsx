@@ -24,7 +24,7 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-
+    // Pokušavamo da se prijavimo korisnika koristeći email i lozinku
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,

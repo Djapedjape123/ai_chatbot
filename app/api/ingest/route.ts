@@ -82,7 +82,7 @@ export async function POST(req: Request) {
         // Timeout zaštita (15 sekundi max po batchu)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
-
+        // Slanje batch-a na Voyage AI za generisanje vektora
         const voyageRes = await fetch('https://api.voyageai.com/v1/embeddings', {
           method: 'POST',
           headers: {

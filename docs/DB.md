@@ -8,17 +8,19 @@ CREATE EXTENSION IF NOT EXISTS vector;
 Tabele
 1. documents
 
-Čuva metapodatke o otpremljenim knjigama i skriptama.
+    Čuva metapodatke o otpremljenim knjigama i skriptama.
 
     id (uuid, primary key)
 
     title (text, naziv dokumenta)
 
     created_at (timestamp, default now())
+    
+    user_id(uuid)
 
 2. document_chunks
 
-Čuva iseckane pasuse iz dokumenata i njihove vektore.
+   Čuva iseckane pasuse iz dokumenata i njihove vektore.
 
     id (uuid, primary key)
 
