@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/check-rate-limit';
 
+export const maxDuration = 60;
 // Limit na dužinu pojedinačnog upita
 const MAX_QUERY_LENGTH = 4000;
 // Limit na broj starih poruka koje šaljemo AI-ju radi štednje tokena

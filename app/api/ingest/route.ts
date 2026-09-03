@@ -5,7 +5,7 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { requireUser } from '@/lib/require-user';
 
 // Bezbednosni limiti
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit
+const MAX_FILE_SIZE = 4 * 1024 * 1024;; // 10 MB limit
 const MAX_CHUNKS = 500; // Maksimalan broj pasusa (sprečava probijanje API limita)
 
 export async function POST(req: Request) {
