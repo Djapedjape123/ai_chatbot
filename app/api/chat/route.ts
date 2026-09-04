@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit } from '@/lib/check-rate-limit';
 
+// Ovaj fajl je deo API rute za chat funkcionalnost. Omogućava korisnicima da postavljaju pitanja i dobijaju odgovore od AI asistenta, uz poštovanje bezbednosnih pravila i ograničenja.
 export const maxDuration = 60;
 // Limit na dužinu pojedinačnog upita
 const MAX_QUERY_LENGTH = 4000;
