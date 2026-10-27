@@ -10,6 +10,11 @@ const MAX_QUERY_LENGTH = 4000;
 // Limit na broj starih poruka koje šaljemo AI-ju radi štednje tokena
 const MAX_HISTORY_MESSAGES = 12;
 
+// Oblik reda koji vraća match_document_chunks
+type MatchedChunk = { document_title: string; content: string; similarity: number };
+// Blok sadržaja iz Claude odgovora (koristimo samo tekstualne)
+type ClaudeContentBlock = { type: string; text?: string };
+
 const SYSTEM_PROMPT = (context: string) => `Ti si pravni asistent za advokatskog pripravnika. Odgovaraš isključivo na srpskom jeziku, kolegijalnim i predusretljivim tonom, kao iskusna koleginica koja pomaže.
 
 VAŽNO BEZBEDNOSNO PRAVILO:
@@ -62,14 +67,20 @@ export async function POST(req: Request) {
     let activeChatId = chatId;
 
     if (activeChatId) {
-      const { data: existingChat, error: chatCheckError } = await supabaseAdmin
+      // RLS vraća samo korisnikove razgovore: tuđi razgovor izgleda isto kao nepostojeći (404).
+      const { data: existingChat, error: chatCheckError } = await supabaseServer
         .from('chats')
-        .select('id, user_id')
+        .select('id')
         .eq('id', activeChatId)
-        .single();
+        .maybeSingle();
 
-      if (chatCheckError || !existingChat || existingChat.user_id !== user.id) {
-        return NextResponse.json({ error: 'Nemate pristup ovom razgovoru.' }, { status: 403 });
+      // 22P02 = chatId nije validan UUID: za klijenta je to isto što i nepostojeći razgovor
+      if (chatCheckError && chatCheckError.code !== '22P02') {
+        console.error('Chat Check Error:', chatCheckError);
+        return NextResponse.json({ error: 'Greška pri proveri razgovora.' }, { status: 500 });
+      }
+      if (chatCheckError || !existingChat) {
+        return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
       }
     } else {
       const title = trimmedQuery.length > 50 ? trimmedQuery.slice(0, 50) + '…' : trimmedQuery;
@@ -87,7 +98,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Učitavanje samo POSLEDNJIH N poruka iz baze
-    const { data: historyRows, error: historyError } = await supabaseAdmin
+    const { data: historyRows, error: historyError } = await supabaseServer
       .from('messages')
       .select('role, content, created_at')
       .eq('chat_id', activeChatId)
@@ -106,7 +117,7 @@ export async function POST(req: Request) {
 
     const { error: userMsgError } = await supabaseAdmin
       .from('messages')
-      .insert({ chat_id: activeChatId, role: 'user', content: trimmedQuery });
+      .insert({ chat_id: activeChatId, user_id: user.id, role: 'user', content: trimmedQuery });
 
     if (userMsgError) {
       console.error('User Message Save Error:', userMsgError);
@@ -138,13 +149,12 @@ export async function POST(req: Request) {
     const voyageData = await voyageRes.json();
     const queryEmbedding = voyageData.data[0].embedding;
 
-    // 4. Pretraga po bazi
-    const { data: chunks, error: searchError } = await supabaseAdmin.rpc(
+    // 4. Pretraga po bazi: korisnika određuje auth.uid() iz JWT-a unutar funkcije, ne parametar
+    const { data: chunks, error: searchError } = await supabaseServer.rpc(
       'match_document_chunks',
       {
         query_embedding: queryEmbedding,
         match_count: 8,
-        filter_user_id: user.id,
       }
     );
 
@@ -154,7 +164,7 @@ export async function POST(req: Request) {
     }
 
     const context = (chunks || [])
-      .map((c: any) => `[Izvor: ${c.document_title}]\n${c.content}`)
+      .map((c: MatchedChunk) => `[Izvor: ${c.document_title}]\n${c.content}`)
       .join('\n\n---\n\n');
 
     // 5. Poziv Claude API uz Timeout zaštitu (35s)
@@ -190,13 +200,13 @@ export async function POST(req: Request) {
 
     const claudeData = await claudeRes.json();
     const answer = claudeData.content
-      .filter((block: any) => block.type === 'text')
-      .map((block: any) => block.text)
+      .filter((block: ClaudeContentBlock) => block.type === 'text')
+      .map((block: ClaudeContentBlock) => block.text)
       .join('\n');
 
     const { error: assistantMsgError } = await supabaseAdmin
       .from('messages')
-      .insert({ chat_id: activeChatId, role: 'assistant', content: answer });
+      .insert({ chat_id: activeChatId, user_id: user.id, role: 'assistant', content: answer });
 
     if (assistantMsgError) {
       console.error('Assistant Message Save Error:', assistantMsgError);
@@ -205,7 +215,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       chatId: activeChatId,
       response: answer,
-      sources: (chunks || []).map((c: any) => ({ title: c.document_title, snippet: c.content.slice(0, 150) })),
+      sources: (chunks || []).map((c: MatchedChunk) => ({ title: c.document_title, snippet: c.content.slice(0, 150) })),
     });
   } catch (error) {
     console.error('Chat Exception:', error);

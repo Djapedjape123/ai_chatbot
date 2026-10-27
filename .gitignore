@@ -42,3 +42,6 @@ backup_*.sql
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase CLI privremeni fajlovi
+supabase/.temp/

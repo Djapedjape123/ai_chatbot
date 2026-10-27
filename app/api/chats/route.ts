@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
 import { requireUser } from '@/lib/require-user';
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, supabase, errorResponse } = await requireUser();
   if (!user) return errorResponse!;
- // 1. Dohvatamo listu razgovora za korisnika iz baze podataka
-  const { data, error } = await supabaseAdmin
+ // 1. Dohvatamo listu razgovora za korisnika (RLS ograničava na njegove redove, .eq('user_id') je drugi pojas zaštite)
+  const { data, error } = await supabase
     .from('chats')
     .select('id, title, created_at')
     .eq('user_id', user.id)

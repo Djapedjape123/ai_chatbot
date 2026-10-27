@@ -7,7 +7,7 @@ Cilj je da se proizvod prodaje advokatskim kancelarijama kao B2B rešenje. Zahte
 
 ## Status faza
 
-- [ ] **FAZA 1: Supabase i baza (izolacija podataka).** Korak 1 (dijagnostika) urađen 2026-10-27 preko Supabase MCP-a (`.mcp.json`, `read_only=true`). Migracija `supabase/migrations/20261027120000_phase1_data_isolation.sql` je napisana i prilagođena, **nije primenjena**. Sledeće: Korak 0 (backup), kod na grani (Korak 3), pa primena migracije (Korak 4). Test `supabase/tests/phase1_rls_test.sql` tek treba napisati.
+- [ ] **FAZA 1: Supabase i baza (izolacija podataka).** Korak 1 (dijagnostika) urađen 2026-10-27 preko Supabase MCP-a (`.mcp.json`, `read_only=true`). Migracija `supabase/migrations/20261027120000_phase1_data_isolation.sql` je napisana i prilagođena, **nije primenjena**. Korak 3 (kod) je urađen na grani `phase1-data-isolation` (**nije commit-ovan ni deploy-ovan**): `tsc` čist, `npm run lint` 0 grešaka, `npm run build` prolazi, a `server-only` je proveren negativnim testom (build pada kad klijentska komponenta uveze `lib/supabase.ts`). Test `supabase/tests/phase1_rls_test.sql` je napisan, ali **još nije pokrenut** (traži primenjenu migraciju; statički deo je proveren nad nemigriranom bazom i pravilno puca sa `CURENJE: 8 polisa važi za anon/public`). Sledeće: Korak 0 (backup, radi vlasnik), pa Korak 4 (migracija i odmah deploy), pa test, curl napad, Advisors i E2E. Rute sada vraćaju 404 umesto 403 za tuđe razgovore (tuđi izgleda isto kao nepostojeći), a frontend ne zavisi od tih kodova. Kod radi tek uz primenjenu migraciju: na staroj bazi pada RPC (nema potpisa bez `filter_user_id`) i upis poruka (nema kolone `user_id`), zato migracija i deploy idu zajedno.
 - [ ] **FAZA 2: Zaštita API ruta.** Rate limiting, prompt injection, zod validacija, audit log.
 - [ ] **FAZA 3: Bezbednost fajlova.** PDF/Word, malware, makroi.
 - [ ] **FAZA 4: Enterprise arhitektura.** On-prem instalacija preko Docker-a.
@@ -332,7 +332,7 @@ Podešavanje Auth-a (dashboard, bez koda): isključiti javnu registraciju (Authe
 
 ## Verifikacija Faze 1
 
-1. **SQL test izolacije** (`supabase/tests/phase1_rls_test.sql`, sve se poništava sa `rollback`). Uzeti dva stvarna korisnika koja oba imaju bar jedan dokument i jedan razgovor. Test se predstavlja kao A (`set local role authenticated` + `request.jwt.claims`) i proverava:
+1. **SQL test izolacije** (`supabase/tests/phase1_rls_test.sql`, sve se poništava sa `rollback`). Test sam pravi dva privremena korisnika (A i B) sa dokumentima, pasusima, razgovorima i porukama unutar transakcije, pa ne zavisi od stvarnih naloga (u bazi je trenutno 0 dokumenata, pa "dva stvarna korisnika" ne bi imala šta da testiraju). Test se predstavlja kao A (`set local role authenticated` + `request.jwt.claims`) i proverava:
    - broj vidljivih redova u sve 4 tabele jednak je broju A-ovih redova (nema curenja, a RLS nije ni prestrog);
    - `match_document_chunks(array_fill(0.01::real, array[1024])::vector, 20)` vraća samo A-ove naslove;
    - `insert into public.messages (content) …` pada sa `insufficient_privilege`;

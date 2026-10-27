@@ -11,9 +11,11 @@ export async function requireUser() {
   if (error || !user) {
     return {
       user: null,
+      supabase: null,
       errorResponse: NextResponse.json({ error: 'Niste prijavljeni.' }, { status: 401 }),
     };
   }
 
-  return { user, errorResponse: null };
+  // Korisnički klijent (JWT + RLS) za čitanja; supabaseAdmin je samo za upise.
+  return { user, supabase, errorResponse: null };
 }

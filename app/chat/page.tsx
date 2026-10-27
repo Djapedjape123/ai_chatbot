@@ -39,14 +39,6 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    loadChats();
-  }, []);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   async function loadChats() {
     try {
       const res = await fetch('/api/chats');
@@ -56,6 +48,25 @@ export default function Home() {
       showToast('Greška pri učitavanju razgovora.');
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/chats')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setChats(data.chats || []);
+      })
+      .catch(() => {
+        if (!cancelled) showToast('Greška pri učitavanju razgovora.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   async function openChat(chatId: string) {
     setActiveChatId(chatId);
