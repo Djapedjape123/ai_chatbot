@@ -15,6 +15,8 @@ const defaultTemplates = [
   { icon: '🔎', text: 'Koji zakon reguliše...' }
 ];
 
+
+
 const fileTemplates = [
   { icon: '⚠️', text: 'Analiziraj pravne rizike u ovom tekstu' },
   { icon: '📌', text: 'Izvuci ključne obaveze ugovornih strana' },
