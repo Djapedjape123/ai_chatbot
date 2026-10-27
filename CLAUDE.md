@@ -7,10 +7,10 @@ Cilj je da se proizvod prodaje advokatskim kancelarijama kao B2B rešenje. Zahte
 
 ## Status faza
 
-- [ ] **FAZA 1: Supabase i baza (izolacija podataka).** Korak 1 (dijagnostika) urađen 2026-10-27 preko Supabase MCP-a (`.mcp.json`, `read_only=true`). **Migracija `supabase/migrations/20261027120000_phase1_data_isolation.sql` primenjena 2026-10-27** (SQL Editor, bez backup-a: Free plan, samo CSV izvoz). Kod (Korak 3) je spojen u `main` (`ef50a9c`) i push-ovan. Verifikovano: (1) `supabase/tests/phase1_rls_test.sql` prošao ("FAZA 1: svi RLS testovi prošli"); (2) napad spolja sa anon ključem: `GET` na `documents`, `chats`, `messages`, `document_chunks`, `profiles` vraća `42501`, stari RPC potpis `PGRST202`, novi RPC i `get_daily_message_count` `42501`; (3) Advisors Security: sa 7 upozorenja na 2 (ostaju `vector` u šemi `public` i isključena zaštita od procurelih lozinki); (4) `tsc`, lint (0 grešaka) i build prolaze, a `server-only` je proveren negativnim testom. **Preostaje za zatvaranje Faze 1:** E2E sa dva naloga (tačka 5 verifikacije) i isključivanje "Allow new users to sign up" u Dashboard-u (razlog: javni anon ključ omogućava da bilo ko napravi nalog direktno preko Auth API-ja, pa sakrivanje `/register` stranice ne štiti; advokate poziva admin). Rute vraćaju 404 umesto 403 za tuđe razgovore (tuđi izgleda isto kao nepostojeći).
-- [ ] **FAZA 2: Zaštita API ruta.** Rate limiting, prompt injection, zod validacija, audit log.
-- [ ] **FAZA 3: Bezbednost fajlova.** PDF/Word, malware, makroi.
-- [ ] **FAZA 4: Enterprise arhitektura.** On-prem instalacija preko Docker-a.
+- [x] **FAZA 1: Supabase i baza (izolacija podataka). ZAVRŠENA (korisnik potvrdio 2026-10-28; E2E i isključenu registraciju nisam sam proverio).** Korak 1 (dijagnostika) urađen 2026-10-27 preko Supabase MCP-a (`.mcp.json`, `read_only=true`). **Migracija `supabase/migrations/20261027120000_phase1_data_isolation.sql` primenjena 2026-10-27** (SQL Editor, bez backup-a: Free plan, samo CSV izvoz). Kod (Korak 3) je spojen u `main` (`ef50a9c`) i push-ovan. Verifikovano: (1) `supabase/tests/phase1_rls_test.sql` prošao ("FAZA 1: svi RLS testovi prošli"); (2) napad spolja sa anon ključem: `GET` na `documents`, `chats`, `messages`, `document_chunks`, `profiles` vraća `42501`, stari RPC potpis `PGRST202`, novi RPC i `get_daily_message_count` `42501`; (3) Advisors Security: sa 7 upozorenja na 2 (ostaju `vector` u šemi `public` i isključena zaštita od procurelih lozinki); (4) `tsc`, lint (0 grešaka) i build prolaze, a `server-only` je proveren negativnim testom. **Preostaje za zatvaranje Faze 1:** E2E sa dva naloga (tačka 5 verifikacije) i isključivanje "Allow new users to sign up" u Dashboard-u (razlog: javni anon ključ omogućava da bilo ko napravi nalog direktno preko Auth API-ja, pa sakrivanje `/register` stranice ne štiti; advokate poziva admin). Rute vraćaju 404 umesto 403 za tuđe razgovore (tuđi izgleda isto kao nepostojeći).
+- [ ] **FAZA 2: Zaštita API ruta.** Rate limiting + potrošnja tokena, prompt injection, zod validacija, audit log. Detaljan plan i odluke su u odeljku „FAZA 2” ispod (plan usaglašen sa korisnikom 2026-10-28, kroz 20 pitanja). **U toku na grani `phase2-api-protection`:** urađeni su zod za `/api/chat` i `chats/[chatId]/*`, ograda RAG konteksta (`lib/rag-context.ts`) i čišćenje zavisnosti (0 ranjivosti). Sledi korak 2.0.
+- [ ] **FAZA 3: Bezbednost fajlova.** PDF/Word, malware, makroi. Prioritet odmah posle Faze 2.
+- [ ] **FAZA 4: Isporuka kancelariji.** Poseban Vercel + Supabase projekat po kancelariji (silo). **Docker/on-prem je odbačen** (odluka korisnika 2026-10-28).
 
 Pravilo: faze idu redom. Sledeća faza počinje tek kada je prethodna završena i verifikovana.
 
@@ -362,13 +362,82 @@ Podešavanje Auth-a (dashboard, bez koda): isključiti javnu registraciju (Authe
 
 # FAZA 2: Zaštita Next.js API ruta (sledeća)
 
-Opseg: rate limiting, zaštita od prompt injection napada, validacija ulaza (zod), audit log.
+Opseg: rate limiting i potrošnja tokena, zaštita od prompt injection napada, validacija ulaza (zod), audit log.
 
-Nalazi preneti iz revizije Faze 1:
+## Odluke korisnika (20 pitanja, 2026-10-28)
+
+| Tema | Odluka |
+|---|---|
+| Stanje prodaje | Nema kupca još. Grade se temelji pre prvog pilota. |
+| Prioritet unutar Faze 2 | 1. rate limit i potrošnja, 2. prompt injection, 3. audit log, 4. zod (zod ide uz svaku rutu koja se dira). |
+| Merenje potrošnje | Tokeni (Claude ulaz+izlaz, Voyage), dnevno i mesečno, plus dnevni broj poruka. |
+| Limit pitanja | **100 poruka dnevno** po advokatu. |
+| Limit dokumenata | **20 dokumenata dnevno** po advokatu. |
+| Čuvanje brojača | **Postgres tabela** (usage ledger), bez Redis-a (nema novog spoljnog servisa). |
+| Burst zaštita | Po **IP adresi**. |
+| Kad se dostigne limit | Upozorenje u aplikaciji na **80%**, blokada (429) na 100%. |
+| Odbrana od prompt injection | **Ograda + čišćenje** (bez drugog LLM-a). Izvor dokumenata je mešan (zakoni, spisi, tuđi dokumenti), pa se SVE tretira kao nepouzdano. |
+| Sumnjiv sadržaj pri otpremanju | **Upozoriti korisnika**, on odlučuje da li da nastavi (laka detekcija obrazaca, bez dodatnog LLM poziva). |
+| Znanje van izvora | Ostaje: sme uz jasnu napomenu da nije iz literature. |
+| Audit log: šta | **Akcije bez sadržaja** (ko, kada, šta, ID-evi). Nikad tekst pitanja, odgovora ni dokumenata. |
+| Audit log: ko čita | Advokat vidi **svoje** zapise, **admin kancelarije vidi sve**. |
+| Audit log: čuvanje | **90 dana**, posle toga automatsko brisanje. |
+| Zod | **Sve API rute**, poruke na srpskom, jedinstven oblik greške. |
+| Uloge | **Uloga `admin` / `lawyer` u bazi** (profili). Admin pozivanje advokata ostaje u Dashboard-u. |
+| Ime asistenta | Neutralan prompt, bez „ko te je napravio” i šala. |
+| Posle Faze 2 | Faza 3 (bezbednost fajlova). |
+
+## Plan rada (redosled je bitan)
+
+Radi se na grani `phase2-api-protection`. Posle svakog koraka: `tsc`, lint, build, `npm test`, pa commit, push i test na Vercel preview-u. Migracija se primenjuje tek kad je kod spreman (isti redosled kao u Fazi 1).
+
+**2.0 Priprema.** Dijagnostika postojećeg: da li `profiles` postoji i koje kolone ima (`supabase/diagnostics/phase2_audit.sql`, samo čita). Proveriti kako radi prijava: ako ide iz browsera direktno na Supabase Auth, IP limit za login ne može u našem kodu, već u Supabase Auth rate limit podešavanjima (Dashboard) i/ili Vercel Firewall pravilu. Instalirati `zod`.
+
+**2.1 Migracija `supabase/migrations/<timestamp>_phase2_usage_audit.sql`** (jedna transakcija, pravila 3-4 važe):
+- `profiles.role` (`admin` | `lawyer`, default `lawyer`), CHECK ograničenje. Korisnik ne sme da menja svoju ulogu (nema UPDATE grant).
+- `usage_ledger` (`id`, `user_id`, `kind` chat|ingest, `input_tokens`, `output_tokens`, `embed_tokens`, `status` reserved|settled|released, `created_at`). `authenticated` samo SELECT svojih redova. Upisuje samo `service_role`. Indeks `(user_id, created_at)`.
+- Atomska rezervacija: funkcija samo za `service_role` (izuzetak od pravila 4, kao `get_daily_message_count`, jer ID dolazi iz verifikovanog korisnika na serveru) uzima `pg_advisory_xact_lock` po korisniku, proverava dnevni broj poruka/dokumenata i dnevni/mesečni budžet tokena, pa upisuje red `reserved`. Time paralelni zahtevi ne mogu da prođu preko limita. Posle poziva red se zatvara sa stvarnim tokenima (`settled`), a pri grešci se oslobađa (`released`), pa neuspeo poziv ne troši limit.
+- Brisanje razgovora ili dokumenata NE dira ledger (to je zaobilaženje iz revizije).
+- `audit_log` (`id`, `user_id`, `action`, `resource_type`, `resource_id`, `metadata jsonb` bez sadržaja, `ip`, `created_at`). Append-only: `authenticated` samo SELECT (svoje; admin sve, preko provere uloge u `profiles`), nema UPDATE/DELETE ni za koga osim retencije. Retencija 90 dana preko `pg_cron` (ili Vercel Cron rute ako `pg_cron` nije dostupan).
+- Pomoćna funkcija `get_usage_summary()` (`security invoker`, `auth.uid()`) vraća potrošnju za prikaz u aplikaciji.
+- Limiti su u env varijablama (jedna kancelarija = jedan deploy): `DAILY_MESSAGE_LIMIT=100`, `DAILY_DOCUMENT_LIMIT=20`, `DAILY_TOKEN_BUDGET`, `MONTHLY_TOKEN_BUDGET`. Predlog za tokene (potvrditi pre migracije): oko 10k tokena po poruci, pa ~1.000.000 dnevno i ~20.000.000 mesečno.
+
+**2.2 Zajednički kod (`lib/`):**
+- `lib/validation.ts`: zod šeme (chat, ingest formData, `chatId` kao UUID) i helper koji vraća grešku `{ error, code }` na srpskom sa 400.
+- `lib/usage.ts`: `reserveUsage`, `settleUsage`, `releaseUsage`. Zamenjuje `lib/check-rate-limit.ts`.
+- `lib/audit.ts`: `logAudit(...)` kroz `supabaseAdmin`, nikad ne baca grešku koja ruši zahtev, i nikad ne prima tekst pitanja/odgovora.
+- `lib/prompt-safety.ts`: čišćenje pasusa i naslova, ograda konteksta, detekcija sumnjivih obrazaca.
+- `lib/prompts.ts`: system prompt izvučen iz rute, neutralan (bez ličnih šala i „ko te je napravio”).
+
+**2.3 `/api/chat`:** zod → autentifikacija → rezervacija → razgovor i poruka → Voyage → pretraga → Claude → zatvaranje rezervacije sa stvarnim tokenima (`usage` iz odgovora Claude-a i Voyage-a) → upis odgovora → audit. Model iz `CLAUDE_MODEL` env varijable (proveriti važeći ID). Odgovor vraća i stanje potrošnje, a UI prikazuje upozorenje na 80%.
+
+**2.4 Prompt injection (`lib/prompt-safety.ts`):**
+- Kontekst se šalje u zasebnom bloku sa **slučajnim graničnikom po zahtevu** (nonce), koji pasus ne može da pogodi. Iz pasusa i naslova uklanjaju se graničnici, kontrolni znaci i prelomi reda u naslovu (naslov je ime fajla koje bira korisnik; ograničiti dužinu).
+- Pravilo u promptu: sve unutar bloka je nepouzdan podatak, bez obzira na to čiji je dokument.
+- Detekcija obrazaca („ignoriši prethodna uputstva”, „system prompt”, lažni graničnici...) pri otpremanju: ingest dvostepeno. Prvi poziv vraća upozorenje bez indeksiranja, korisnik potvrdi i šalje ponovo sa `acknowledge=true`. Ishod ide u audit (`suspicious_content_flagged`).
+
+**2.5 `/api/ingest`:** zod za formData, `export const maxDuration = 60`, rezervacija (20 dokumenata dnevno + Voyage tokeni), čišćenje naslova, detekcija iz 2.4, audit `document_uploaded`. Uskladiti poruku o veličini fajla sa stvarnim limitom (4MB, Vercel).
+
+**2.6 Ostale rute i akcije:** zod na `chats`, `chats/[chatId]`, `chats/[chatId]/messages`, `deleteDocument` (UUID) i `auth/callback` (parametar `next` proveriti protiv open redirect-a). Audit za `chat_created`, `chat_deleted`, `document_deleted` (upis ide kroz `supabaseAdmin`, brisanje ostaje preko RLS klijenta).
+
+**2.7 Audit događaji (bez sadržaja):** `document_uploaded`, `document_upload_blocked`, `document_deleted`, `chat_created`, `chat_deleted`, `question_asked` (u `metadata`: ID razgovora, **ID-evi dokumenata korišćenih kao izvori** = ko je „pročitao” koji dokument, broj tokena), `limit_reached`, `suspicious_content_flagged`. Stranica `/activity`: advokat vidi svoje, admin sve.
+
+**2.8 IP burst zaštita:** limit po IP adresi na `/api/chat` i `/api/ingest` (brojač u Postgres-u ili Vercel Firewall pravilo, odlučiti u 2.0 posle provere ograničenja Vercel plana). Ne verovati ručno poslatom `X-Forwarded-For` van Vercel-a.
+
+**2.9 Testovi i verifikacija:**
+- `supabase/tests/phase2_rls_test.sql` (sve sa `rollback`): `authenticated` ne može INSERT/UPDATE/DELETE u `usage_ledger` ni `audit_log`; vidi samo svoje; admin vidi sve u kancelariji; `anon` nema ništa; korisnik ne može da promeni svoju ulogu; rezervacija ne dozvoljava prekoračenje limita; brisanje razgovora ne smanjuje potrošnju.
+- Jedinični testovi (`npm test`, ugrađeni Node runner `node:test`, bez vitest-a) za `prompt-safety`, zod šeme i računanje limita.
+- Ručno: 101. poruka vraća 429; 21. dokument vraća 429; obrisan razgovor ne resetuje brojač; dokument sa „ignoriši uputstva” daje upozorenje; Advisors → Security bez novih upozorenja; `tsc`, lint, build.
+- Na kraju ažurirati ovaj fajl (status Faze 2) i commit-ovati SQL.
+
+**Fajlovi Faze 2.** Novi: `supabase/diagnostics/phase2_audit.sql`, `supabase/migrations/<ts>_phase2_usage_audit.sql`, `supabase/tests/phase2_rls_test.sql`, `lib/validation.ts`, `lib/usage.ts`, `lib/audit.ts`, `lib/prompt-safety.ts`, `lib/prompts.ts`, `app/activity/page.tsx`. Menjaju se: `app/api/chat/route.ts`, `app/api/ingest/route.ts`, `app/api/chats/**`, `app/actions/documents.ts`, `app/auth/callback/route.ts`, `app/chat/page.tsx` (prikaz potrošnje), `lib/check-rate-limit.ts` (briše se).
+
+## Nalazi preneti iz revizije Faze 1
 - **Rate limit se može zaobići.** `get_daily_message_count` broji redove iz `messages`, pa korisnik koji obriše razgovor resetuje svoj brojač. Treba posebna tabela potrošnje (usage ledger) u koju korisnik ne može da piše niti iz nje da briše (`lib/check-rate-limit.ts`).
 - **`/api/ingest` nema rate limit.** Neograničeni pozivi Voyage API-ja troše kredite (`app/api/ingest/route.ts`).
-- **Nema zod validacije.** `chatId` i telo zahteva se ne validiraju (`app/api/chat/route.ts:48`).
-- **Prompt injection.** RAG kontekst iz dokumenata se ubacuje direktno u system prompt (`app/api/chat/route.ts:13-32`), a `document_title` (ime fajla koje bira korisnik) ide u kontekst bez ikakve obrade.
+- **Nema zod validacije.** `chatId` i telo zahteva se ne validiraju (`app/api/chat/route.ts:48`). **Delimično urađeno:** `lib/validation.ts` (`chatRequestSchema`, `uuidSchema`) koriste `/api/chat` i obe rute `chats/[chatId]`. Neispravno telo vraća 400, a neispravan ID u putanji 404. Preostaju ingest, `deleteDocument` i `auth/callback` (2.5, 2.6).
+- **Prompt injection.** RAG kontekst iz dokumenata se ubacuje direktno u system prompt (`app/api/chat/route.ts:13-32`), a `document_title` (ime fajla koje bira korisnik) ide u kontekst bez ikakve obrade. **Delimično urađeno:** `lib/rag-context.ts` stavlja svaki izvod u blok `<izvod naziv="...">` i escape-uje `<` i `>` u sadržaju i nazivu, pa dokument ne može da zatvori blok niti da lažira izvod. Time je pokriven cilj „slučajnog graničnika” iz 2.4: graničnik ne mora biti tajan kad ga sadržaj ne može napisati. Naziv se čisti od kontrolnih, zero-width i bidi znakova i od preloma, i skraćuje na 120 znakova. Preostaje detekcija sumnjivog sadržaja pri otpremanju (2.4).
+- **Zavisnosti: bilo je 13 ranjivosti (2 kritične, `npm audit --omit=dev`, 2026-10-27), sada 0.** Uklonjeni su neiskorišćeni `langchain` i `@langchain/community`. Urađen je `npm audit fix`. `zod` je podignut sa 3 na 4, a `next` i `eslint-config-next` sa 16.3.0 na 16.4.3 (RCE u Image Optimization API-ju, DoS preko Server Actions). **Pre spajanja u `main` ručno proći login, chat, otpremanje PDF-a i brisanje dokumenta.** Trajno pravilo: `npm audit --omit=dev` ide u svaku reviziju.
 - **Nema audit loga** (ko je kada otpremio, pročitao ili obrisao dokument). Advokatske kancelarije to traže zbog NDA.
 
 # FAZA 3: Bezbednost PDF/Word fajlova
@@ -381,11 +450,11 @@ Nalazi preneti iz revizije Faze 1:
 - **Limit veličine se ne slaže sa porukom.** `MAX_FILE_SIZE` je 4MB, a poruka i komentar kažu 10MB (`app/api/ingest/route.ts:8,30`).
 - **Parsiranje (unpdf) nema timeout ni izolaciju.** Pokreće se direktno u API ruti.
 
-# FAZA 4: Enterprise arhitektura (on-prem / Docker)
+# FAZA 4: Isporuka kancelariji (Vercel + Supabase silo)
 
-Opseg: instalacija kod klijenta preko Docker-a, za slučaj da kancelarija odbije Cloud (Vercel) zbog internih firewall pravila.
+Odluka (2026-10-28): **Docker i on-prem nisu u planu.** Svaka kancelarija dobija poseban Vercel projekat i poseban Supabase projekat, a postupak podizanja je dokumentovan checklista.
 
-Preduslovi i napomene:
-- **Bazna šema u repou.** Treba je napraviti preko `supabase db dump --schema-only`. Faza 1 dodaje samo migraciju preko postojeće šeme.
-- **Next.js build za on-prem.** `output: 'standalone'` + Dockerfile, a self-hosted Supabase preko docker compose.
-- **Spoljni AI servisi.** Voyage AI i Claude su cloud API-ji. On-prem instalacija traži dozvoljen izlazni saobraćaj (egress allowlist) ka tim servisima ili alternativu (npr. Claude preko cloud provajdera u EU regionu, lokalni embedding model).
+Opseg:
+- **Bazna šema u repou.** Nov Supabase projekat mora da se podigne od nule, a migracije postoje samo preko postojeće šeme. Treba napraviti baznu šemu preko `supabase db dump --schema-only` i migracije poređati tako da prolaze na praznoj bazi.
+- **Checklista za onboarding** (`docs/onboarding.md`): Supabase projekat (EU region, Pro plan zbog backup-a), migracije redom, Auth podešavanja (registracija OFF, zaštita od procurelih lozinki, rate limit), env varijable na Vercel-u (uključujući limite iz Faze 2), prvi admin nalog, test izolacije.
+- **Spoljni AI servisi.** Voyage AI i Claude su cloud API-ji. Pripremiti za kancelariju pregled tokova podataka i uslova čuvanja (zero retention), za DPA i bezbednosni upitnik.

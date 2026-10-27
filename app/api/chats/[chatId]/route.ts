@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
+import { uuidSchema } from '@/lib/validation';
 
 export async function DELETE(
   req: Request,
@@ -12,6 +13,11 @@ export async function DELETE(
     const { user, supabase, errorResponse } = await requireUser();
     if (!user) return errorResponse!;
 
+    // Neispravan ID ne stiže do baze: za klijenta je to isto što i nepostojeći razgovor
+    if (!uuidSchema.safeParse(chatId).success) {
+      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+    }
+
     // 2. BRISANJE JEDNIM POZIVOM preko korisničkog klijenta.
     // RLS briše samo korisnikove razgovore, a poruke brišu se kaskadno (ON DELETE CASCADE).
     // Prazan rezultat = razgovor ne postoji ILI nije njegov: oba slučaja izgledaju isto (404).
@@ -21,10 +27,9 @@ export async function DELETE(
       .eq('id', chatId)
       .select('id');
 
-    // 22P02 = chatId nije validan UUID, što je za klijenta isto što i nepostojeći razgovor
-    if (error && error.code !== '22P02') throw error;
+    if (error) throw error;
 
-    if (error || !deleted || deleted.length === 0) {
+    if (!deleted || deleted.length === 0) {
       return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
     }
 
