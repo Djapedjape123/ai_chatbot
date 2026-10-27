@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# database backups (sadrže poverljive podatke klijenata, nikad u git)
+backup_*.sql
+
 # vercel
 .vercel
 
