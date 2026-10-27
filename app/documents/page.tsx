@@ -16,15 +16,16 @@ export default function DocumentsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadDocs();
+    let cancelled = false;
+    getUserDocuments().then((docs) => {
+      if (cancelled) return;
+      setDocuments(docs);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  async function loadDocs() {
-    setLoading(true);
-    const docs = await getUserDocuments();
-    setDocuments(docs);
-    setLoading(false);
-  }
 
   async function handleDelete(id: string) {
     if (!confirm('Da li ste sigurni da želite da obrišete ovaj dokument? Svi njegovi indeksirani vektori biće uklonjeni.')) {

@@ -109,6 +109,7 @@ export async function POST(req: Request) {
         // Priprema i upis pasusa i vektora
         const insertData = batch.map((text, index: number) => ({
           document_id: document.id,
+          user_id: user.id,
           content: text,
           embedding: voyageData.data[index].embedding,
         }));
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
       
       // ROLLBACK: Brisanje nekompletnog dokumenta iz baze ukoliko se desila bilo kakva greška!
       console.error('Proces obrade prekinut. Pokrećem rollback...', innerError);
-      await supabaseAdmin.from('documents').delete().eq('id', document.id);
+      await supabaseAdmin.from('documents').delete().eq('id', document.id).eq('user_id', user.id);
       
       const errorMessage = innerError instanceof Error ? innerError.message : 'Došlo je do greške pri obradi fajla.';
       return NextResponse.json({ error: errorMessage }, { status: 500 });
