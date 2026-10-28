@@ -12,20 +12,22 @@ import { decideMfaStep, isAdminRole, type MfaStep } from '@/lib/admin-access';
 // mfa: 'ok' = sesija je aal2, može u panel; 'challenge' = ima faktor, traži se kod (/login/mfa);
 // 'enroll' = nema faktor, prvo ga uključuje (/account/security). Pozivalac je odgovoran da pri
 // mfa !== 'ok' ne prikaže niti pokrene ništa admin-specifično.
+//
+// requireUser({ allowMfaPending }) jer admin sa faktorom, a bez koda, ovde dobija 'challenge', a ne 401/404.
+// Nivo i faktori dolaze iz requireUser() (getUser() + token), isto kao za kapiju u proxy.ts.
 export async function requireAdmin(): Promise<{
   user: NonNullable<Awaited<ReturnType<typeof requireUser>>['user']>;
   supabase: NonNullable<Awaited<ReturnType<typeof requireUser>>['supabase']>;
   mfa: MfaStep;
 } | null> {
-  const { user, supabase } = await requireUser();
+  const { user, supabase, assurance } = await requireUser({ allowMfaPending: true });
   if (!user || !supabase) return null;
 
   const { data: profile, error: profileError } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
   if (profileError) console.error('Admin Role Check Error:', profileError);
   if (!isAdminRole(profile?.role)) return null;
 
-  const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aalError) console.error('Admin AAL Check Error:', aalError);
-
-  return { user, supabase, mfa: decideMfaStep(aal?.currentLevel, aal?.nextLevel) };
+  // Potvrđen faktor znači da je sledeći nivo aal2 (decideMfaStep razlikuje 'challenge' od 'enroll')
+  const nextLevel = assurance.verifiedFactors > 0 ? 'aal2' : assurance.aal;
+  return { user, supabase, mfa: decideMfaStep(assurance.aal, nextLevel) };
 }

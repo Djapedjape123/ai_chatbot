@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/require-user';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { uuidSchema } from '@/lib/validation';
@@ -8,9 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 
 export async function getUserDocuments() {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await requireUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -28,9 +26,7 @@ export async function getUserDocuments() {
 }
 
 export async function deleteDocument(documentId: string) {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await requireUser();
   if (!user) return { error: 'Neautorizovan pristup.' };
 
   // Server akcija je javni endpoint: argument stiže od klijenta i ne sme do baze bez provere

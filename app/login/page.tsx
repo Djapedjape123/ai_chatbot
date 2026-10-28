@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { MFA_LOGIN_PATH } from '@/lib/mfa-gate';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,8 +38,12 @@ export default function LoginPage() {
       return;
     }
 
+    // Nalog sa uključenom dvostepenom prijavom prvo unosi kod. Kapija u proxy.ts i requireUser() važi i bez ove provere.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const needsCode = aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2';
+
     router.refresh();
-    router.push('/chat');
+    router.push(needsCode ? MFA_LOGIN_PATH : '/chat');
   }
 
   return (

@@ -10,23 +10,34 @@ Za detalje i obrazloženja: `docs/admin-panel-plan.md` (plan) i `CLAUDE.md` (sta
 | 1. Izolacija podataka (RLS) | Gotova |
 | 2. Zaštita API ruta | Gotova (preostale stavke su dole, odeljak 1D) |
 | 2.5.1 Migracija admin panela + SQL test | Primenjena na Supabase-u, testovi prošli |
-| 2.5.2 Zajednički kod (`lib/`) | Napisan, `npm test` 144/144, **nije commit-ovan** |
-| 2.5.3 do 2.5.10 | Nije počelo: nema nijedne admin stranice, nijedan admin ne postoji |
+| 2.5.2 Zajednički kod (`lib/`) | Napisan i commit-ovan (`2fd9840`); izmena `/api/chat` još nije potvrđena na produkciji |
+| 2.5.3 MFA (kapija, `/login/mfa`, `/account/security`) | Kod napisan, `npm test` 176/176, kapija probana lokalno; **nije commit-ovan ni pušten, čeka tvoj test (odeljak 1A)** |
+| 2.5.4 do 2.5.10 | Nije počelo: nema nijedne admin stranice, nijedan admin ne postoji |
 | 3. Bezbednost fajlova | Posle 2.5 |
 | 4. Isporuka kancelariji | Posle faze 3 |
 
 ## 1. Šta radiš TI (pre sledećeg ćaskanja)
 
-### A. Odmah, oko 15 minuta
-1. **SQL Editor: pokreni `supabase/tests/phase2_rls_test.sql`** (izmenjen). Očekujem `FAZA 2: svi testovi prošli`.
-   Ako pukne, sačuvaj ceo tekst greške i donesi ga u sledeći čet.
-2. **Commit i push** svega što je nepotvrđeno (`git status`): `CLAUDE.md`, `docs/`, `lib/` (novi: `admin-access`, `csv`,
-   `require-admin` + testovi), izmenjeni `lib/{activity,audit,limits,usage,validation}` + testovi, `app/api/chat/route.ts`,
-   `supabase/migrations/20261028150000_phase25_admin.sql`, `supabase/tests/phase25_admin_test.sql`,
-   `supabase/tests/phase2_rls_test.sql`. Predlog poruke: `faza 2.5.1 i 2.5.2`.
-3. **Kad Vercel završi deploy (Production, status „Ready"):** otvori pravu aplikaciju, pošalji jednu poruku u chat.
-   Treba da stigne odgovor. U sledećem čet-u zamoli Claude-a da proveri novi red u `usage_ledger`. Razlog: `/api/chat` sada
-   čita limite iz tabele `office_settings`, a ta izmena nije pokretana lokalno.
+### A. Odmah
+Već urađeno: `phase2_rls_test.sql` je prošao (2026-10-28), a kod 2.5.1 i 2.5.2 plus dokumenti su commit-ovani i na GitHub-u (`83169e3`).
+
+1. **Pre nego što pustiš 2.5.3: pošalji jednu poruku u chat na produkciji** (Vercel deploy mora biti „Ready"). U `usage_ledger` još nema
+   nijednog reda posle izmene iz 2.5.2 (poslednji je iz 15:57, smoke test Faze 2). Javi Claude-u da proveri novi red. Razlog: 2.5.3 menja
+   i `/api/chat` (prelazak na `requireUser()`), pa ako bi chat posle toga prestao da radi, ne bi se znalo koja je izmena kriva.
+2. **Commit i push 2.5.3** (`git status` pokazuje šta je novo: `proxy.ts`, `lib/mfa-*`, `lib/require-*`, `app/login/`, `app/account/`, izmene
+   `/api/chat`, `app/actions/documents.ts` i `app/activity/page.tsx`, plus dokumenti). Predlog poruke: `faza 2.5.3 mfa`.
+   **Pažnja:** `main` je produkcija, pa ovo odmah menja pravu aplikaciju, uključujući `proxy.ts` (kapiju cele aplikacije).
+3. **Posle deploy-a (Production „Ready") testiraj ovim redom:**
+   1. Običan prozor, nalog još bez MFA: prijava, chat i dokumenti moraju da rade kao pre. Ako ne rade, javi odmah; izlaz je
+      vraćanje (`git revert`) tog commit-a.
+   2. (B1 mora biti urađen.) Otvori `/account/security`, klikni „Uključi dvostepenu prijavu", skeniraj QR aplikacijom
+      (Google Authenticator, Microsoft Authenticator, Authy…) i unesi 6 cifara. Treba da piše „Uključena".
+   3. Incognito prozor, isti nalog: posle lozinke traži se kod. Pogrešan kod daje poruku, tačan otvara chat.
+   4. U incognito prozoru, pre unosa koda, otvori direktno `/chat` ili `/documents`: mora da te vrati na unos koda.
+   5. Javi Claude-u ishod; on u bazi proverava zapis `mfa_enrolled`.
+
+   Ako je kod uvek „pogrešan", proveri da je na telefonu uključeno automatsko vreme. Ako se zaključaš (izgubljen telefon ili greška):
+   Dashboard → Authentication → Users → tvoj nalog → ukloni faktor (vidi C5).
 
 ### B. Dashboard podešavanja (Supabase), redom po tome kad ti trebaju
 Putanje u Supabase Dashboard-u (Authentication je u levom meniju):
@@ -46,12 +57,18 @@ Putanje u Supabase Dashboard-u (Authentication je u levom meniju):
 1. **CSV izvoz koristi `;` kao razdvajač** (srpski Excel očekuje `;`, a zarez je tamo decimalni znak). Jedna konstanta, lako se menja.
 2. **Mesečni budžet tokena ne sme biti manji od dnevnog** (pravilo samo u formi).
 3. **Ime advokata ne sme da sadrži `<`, `>` ni kontrolne znakove** (ide u mejl pozivnice).
-4. **MFA za advokate:** uključivanje je opciono, ali ko ga uključi, ne može da preskoči kod (vidi 2.5.3). Slažeš li se?
-   Razlog: u prvobitnom planu je MFA za advokate „opcion", ali bez provere u `proxy.ts` advokat sa ukradenom lozinkom
-   može posle prijave da otvori `/chat` direktno i preskoči kod, pa bi opcioni MFA bio samo ukras.
+4. **MFA za advokate (primenjeno):** uključivanje je opciono, ali ko ga uključi, ne može da preskoči kod. Kapija je u `proxy.ts` i u
+   `requireUser()` (API rute, server akcije, stranice). Primenjeno kao preporuka, jer na pitanje nije stigao odgovor; ako se ne slažeš, reci.
 5. **Izgubljen telefon admina:** Supabase za TOTP nema rezervne kodove. Vlasnik projekta uklanja faktor u
    Dashboard-u (Authentication → Users → korisnik → faktori), pa se admin ponovo prijavi i uključi novi. Prihvatljivo?
    (Alternativa „admin resetuje MFA drugom adminu" je dodatni posao i nije u planu.)
+6. **NOVO, traži tvoju odluku: MFA štiti aplikaciju, ne i bazu.** Ko ima samo ukradenu lozinku, dobija od Supabase Auth-a sesiju bez koda
+   (`aal1`) i preko REST API-ja (anon ključ je javan) može da čita sve što RLS dozvoljava tom nalogu: dokumente, pasuse, razgovore. Naša
+   kapija to ne vidi. Rešenje je posebna migracija koja u bazi traži `aal2` za naloge sa uključenim MFA (menja RLS na svim tabelama, pa traži
+   tvoje odobrenje i ponovni SQL test). Opcije: (a) odmah, kao 2.5.3b; (b) posle admin panela, a pre pilota (preporuka); (c) ne radimo.
+   Napomena: ni to ne štiti naloge bez uključenog MFA, jer je za advokate opcion. Da li MFA treba da bude obavezan i za advokate? (Posebna odluka.)
+7. **NOVO: audit za isključivanje MFA.** Uklanjanje faktora trenutno nije u audit logu (lista akcija u bazi nema takvu stavku). Dodavanje je
+   mala migracija; preporuka je da ide zajedno sa tačkom 6, ako se ona radi.
 
 ### D. Preneto iz Faze 2, obavezno pre prvog pilota
 - Preview provere sa spuštenim limitima (`DAILY_MESSAGE_LIMIT=2`, `DAILY_DOCUMENT_LIMIT=2`, `IP_BURST_LIMIT=3`, pa vrati):
@@ -68,25 +85,20 @@ Pravila za sve korake: test-prvo, pa `tsc`, lint, `next build`, `npm test`, `npm
 proveravano" dok ti ne potvrdiš. Izgled admin stranica prati postojeću aplikaciju (boje `#16263D` i `#F7F3EC`, bele kartice,
 isto kao `/activity`), bez nove biblioteke. Pre izmene `proxy.ts` Claude čita `node_modules/next/dist/docs/` (pravilo iz `AGENTS.md`).
 
-### 2.5.3 MFA (prvi deo sa stranicama)
-- `app/account/security/page.tsx` (+ server action za audit `mfa_enrolled`): uključivanje preko QR koda (`mfa.enroll` → QR i tajni ključ za ručni
-  unos → unos 6 cifara → `challenge` + `verify`), spisak faktora, uklanjanje faktora samo sa `aal2`. Audit se upisuje na serveru posle
-  provere da faktor stvarno postoji (klijent ne može da lažira zapis).
-- `app/login/mfa/page.tsx`: unos koda posle prijave; `next` prolazi `safeRedirectPath`.
-- `app/login/page.tsx`: posle `signInWithPassword` proverava nivo; ako postoji faktor, šalje na `/login/mfa`.
-- `proxy.ts`: (a) korisnik sa potvrđenim faktorom, a bez `aal2`, ostaje na `/login/mfa` (odluka C4; `supabase.auth.getUser()` koji `proxy.ts` već
-  zove vraća i faktore, pa nema dodatnog mrežnog poziva — proveriti pri implementaciji); (b) `/admin/*` bez `aal2` ide na
-  `/login/mfa?next=/admin`, odnosno na `/account/security` ako faktora nema; (c) `/login/mfa` nije „auth stranica" (ulogovan korisnik ne sme da bude vraćen na `/chat` pre koda).
-  Proxy samo usmerava; stvarna provera je `requireAdmin()` i baza.
-- Čist kod sa testom: šema za 6-cifreni kod (`lib/validation.ts`) i odluka o preusmeravanju.
-- **Tvoj deo za test:** B1 (TOTP uključen). Tok: prijava → `/account/security` → skeniraš QR aplikacijom (Google Authenticator, Authy…) →
-  odjava → prijava traži kod → pogrešan kod daje poruku → tačan kod otvara aplikaciju.
+### 2.5.3 MFA — URAĐENO, čeka tvoj test (odeljak 1A)
+Šta je napravljeno, koje su odluke donete umesto tebe i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.3". Ukratko: kapija u
+`proxy.ts` i `requireUser()` (nalog sa potvrđenim faktorom bez koda ne ulazi nigde osim na `/login/mfa`; API i server akcije dobijaju
+401 `mfa_required`), stranice `/login/mfa` i `/account/security`, audit `mfa_enrolled` preko server akcije. Kapija je probana lokalno na pravom
+`next start` sa lažnim Auth serverom (50 provera), ali QR i unos koda u browseru nisu probani: to je tvoj test.
+Jedno odstupanje od ranijeg opisa: proxy nema poseban slučaj za `/admin/*` (ne zna ulogu bez upita u bazu); admin bez koda se usmerava iz
+`/admin` layout-a u 2.5.5.
 
 ### 2.5.4 Pozivnica i postavljanje lozinke
 - `app/auth/confirm/route.ts` (`verifyOtp`, tip samo `invite` ili `recovery`, `next` kroz `safeRedirectPath`), `app/set-password/page.tsx`
   (najmanje 12 znakova; ista dužina i na `/reset-password`, koja sad traži 6).
 - Briše se `app/register/page.tsx`, link „Registrujte se" i `/register` u `proxy.ts`; umesto linka tekst „Nalog vam otvara administrator kancelarije."
 - Claude ti daje tačan tekst oba email šablona. **Redosled:** prvo deploy ovog koda, TEK ONDA menjaš šablone (B8).
+- Reset lozinke za nalog sa uključenim MFA: Supabase može da traži kod pre promene lozinke, pa se taj tok proverava i prilagođava ovde (vidi plan, „Rezultat 2.5.3", poznato).
 - **Tvoj deo za test:** B3 i B4 (URL Configuration, SMTP), pa B8.
 
 ### 2.5.5 Admin okvir i pregled
@@ -113,11 +125,11 @@ ako prolazi, dodaje se `profiles.disabled_at` (nova migracija) i `requireUser()`
 ### 2.5.10 Završna provera Faze 2.5
 Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/build/test/audit, pa u CLAUDE.md Faza 2.5 postaje `[x]`.
 
-## 3. Prvi admin (radiš ti, tek kad je 2.5.3 na produkciji)
+## 3. Prvi admin (radiš ti, tek kad je 2.5.5 na produkciji; do tada `/admin` ne postoji)
 1. Prijavi se svojim nalogom da bi imao nalog i profil.
 2. SQL Editor (promeni mejl): `update public.profiles set role = 'admin' where email = 'tvoj@mejl.rs' returning id, email, role;`
    **Mora da vrati tačno 1 red.** Ako vrati 0, nalog nema profil; javi Claude-u.
-3. Otvori `/account/security` i uključi MFA, odjavi se, prijavi se, pa otvori `/admin`.
+3. Ako MFA već nisi uključio (2.5.3), otvori `/account/security` i uključi ga; odjavi se, prijavi se (traži kod), pa otvori `/admin`.
 4. Do tada admina nema (u bazi je 0), i to je ispravno.
 
 ## 4. Kako znamo da je Faza 2.5 gotova
@@ -129,4 +141,4 @@ Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/bu
 ## 5. Šta uneti na početku sledećeg ćaskanja
 Kopiraj:
 > Pročitaj `CLAUDE.md` i `docs/next-steps.md`. Završio sam sledeće iz odeljka 1: (nabroj A1, A2…). Evo ishoda: (rezultati/greške).
-> Nastavi od koraka 2.5.3 (MFA).
+> Nastavi od koraka 2.5.4 (pozivnica i postavljanje lozinke).

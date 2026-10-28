@@ -1,5 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { apiError } from '@/lib/api-error';
+import { MFA_REQUIRED_MESSAGE, countVerifiedFactors, decideMfaGate, readAal } from '@/lib/mfa-gate';
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
@@ -34,10 +36,17 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // Preusmerenje ili odbijanje mora da ponese kolačiće koje je Supabase upravo osvežio (setAll iznad).
+  // Bez njih bi pregledač zadržao stari refresh token, koji je rotacijom već iskorišćen, i sesija bi se prekinula.
+  const withSessionCookies = (target: NextResponse) => {
+    response.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));
+    return target;
+  };
+
   // 1. Stranice za prijavu
-  const isAuthPage = 
-    pathname === '/login' || 
-    pathname === '/register' || 
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/register' ||
     pathname === '/forgot-password';
 
   // 2. Početna (Landing) stranica
@@ -51,14 +60,43 @@ export async function proxy(request: NextRequest) {
   if (!user && !isAuthPage && !isHomePage && !isCallbackRoute && !isResetPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return withSessionCookies(NextResponse.redirect(url));
   }
 
-  // PRAVILO 2: Ulogovan je, a pokušava da ode na Auth stranice ILI na Landing stranicu -> baci ga na glavni /chat interfejs
+  // PRAVILO 2 (dvostepena prijava, 2.5.3): nalog sa potvrđenim faktorom, a sa sesijom dobijenom samo lozinkom (aal1),
+  // ne ulazi nigde osim na /login/mfa. Stranice se preusmeravaju, a API i server akcije dobijaju 401 mfa_required.
+  // Ovo je samo optimistički sloj: isto pravilo važi i u requireUser(), koji koriste rute, akcije i stranice.
+  // Faktori stižu iz getUser() iznad (bez dodatnog poziva), a nivo se čita iz tokena samo kad faktor postoji.
+  if (user) {
+    const verifiedFactors = countVerifiedFactors(user.factors);
+    let aal: string | null = null;
+    if (verifiedFactors > 0) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      aal = readAal(session?.access_token);
+    }
+
+    const gate = decideMfaGate({
+      pathname,
+      search: request.nextUrl.search,
+      method: request.method,
+      verifiedFactors,
+      aal,
+    });
+    if (gate.kind === 'deny') {
+      return withSessionCookies(apiError(MFA_REQUIRED_MESSAGE, 401, 'mfa_required'));
+    }
+    if (gate.kind === 'redirect') {
+      return withSessionCookies(NextResponse.redirect(new URL(gate.to, request.url)));
+    }
+  }
+
+  // PRAVILO 3: Ulogovan je, a pokušava da ode na Auth stranice ILI na Landing stranicu -> baci ga na glavni /chat interfejs
   if (user && (isAuthPage || isHomePage)) {
     const url = request.nextUrl.clone();
     url.pathname = '/chat';
-    return NextResponse.redirect(url);
+    return withSessionCookies(NextResponse.redirect(url));
   }
 
   return response;

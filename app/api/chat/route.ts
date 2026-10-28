@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/require-user';
 import { apiError } from '@/lib/api-error';
 import { chatRequestSchema } from '@/lib/validation';
 import { buildRagContext, uniqueDocumentIds } from '@/lib/rag-context';
@@ -38,13 +38,9 @@ export async function POST(req: Request) {
     const burstBlock = await enforceIpBurst(ip);
     if (burstBlock) return burstBlock;
 
-    // 0.2 Autentifikacija
-    const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
-
-    if (authError || !user) {
-      return apiError('Niste ulogovani ili je sesija istekla.', 401, 'unauthorized');
-    }
+    // 0.2 Autentifikacija (requireUser za nalog sa uključenom dvostepenom prijavom traži i uneti kod)
+    const { user, supabase: supabaseServer, errorResponse: authErrorResponse } = await requireUser();
+    if (authErrorResponse) return authErrorResponse;
     const actor = { id: user.id, email: user.email };
 
     // 0.5 Validacija tela zahteva (zod): pitanje je string 1-4000 karaktera posle trim-a, chatId je UUID ili ga nema

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/require-user';
 import {
   ACTION_LABELS,
   ACTIVITY_ACTIONS,
@@ -35,8 +35,7 @@ export default async function ActivityPage({
 }) {
   const { page, action } = parseActivityQuery(await searchParams);
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await requireUser();
   if (!user) redirect('/login');
 
   // Čitanja idu preko korisničkog klijenta: RLS daje korisniku svoje zapise, a adminu sve zapise kancelarije.
