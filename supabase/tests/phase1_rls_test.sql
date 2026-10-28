@@ -54,6 +54,12 @@ begin
   perform set_config('test.b_doc', b_doc::text, true);
   perform set_config('test.a_chat', a_chat::text, true);
   perform set_config('test.b_chat', b_chat::text, true);
+
+  -- Stari brojač get_daily_message_count se uklanja migracijom 20261028140000. Test važi i pre i posle nje:
+  -- dok funkcija postoji, proverava se da je zaključana; kada je nema, nema šta da se zaključava.
+  -- Stanje se čita ovde (kao vlasnik baze), jer anon možda nema pravo da pretražuje katalog.
+  perform set_config('test.old_counter',
+                     (to_regprocedure('public.get_daily_message_count(uuid)') is not null)::text, true);
 end $$;
 
 -- 1. Statička provera konfiguracije (kao vlasnik baze).
@@ -162,7 +168,7 @@ begin
   if n <> 0 then raise exception 'CURENJE: B je obrisao A-ov dokument'; end if;
 
   -- authenticated nema INSERT/UPDATE/DELETE gde ga ne sme biti (nema lažnih "assistant" poruka, nema zaobilaženja MAX_CHUNKS)
-  foreach s in array array[
+  foreach s in array array_remove(array[
     format('insert into public.messages (chat_id, user_id, role, content) values (%L, %L, ''assistant'', ''lazna'')', current_setting('test.b_chat'), b),
     format('insert into public.document_chunks (document_id, user_id, content) values (%L, %L, ''lazan'')', current_setting('test.b_doc'), b),
     format('insert into public.documents (title, user_id) values (''x'', %L)', b),
@@ -173,9 +179,10 @@ begin
     'delete from public.messages',
     'delete from public.document_chunks',
     'update public.profiles set full_name = ''izmenjeno''',
-    format('select public.get_daily_message_count(%L)', b),
+    case when current_setting('test.old_counter')::boolean
+         then format('select public.get_daily_message_count(%L)', b) end,
     'select public.handle_new_user()'
-  ] loop
+  ], null) loop
     begin
       execute s;
       raise exception 'CURENJE: authenticated je uspeo da izvrši: %', s;
@@ -263,16 +270,17 @@ do $$
 declare
   s text;
 begin
-  foreach s in array array[
+  foreach s in array array_remove(array[
     'select count(*) from public.documents',
     'select count(*) from public.document_chunks',
     'select count(*) from public.chats',
     'select count(*) from public.messages',
     'select count(*) from public.profiles',
     'select * from public.match_document_chunks(array_fill(0.01::real, array[1024])::public.vector, 20)',
-    format('select public.get_daily_message_count(%L)', current_setting('test.b')),
+    case when current_setting('test.old_counter')::boolean
+         then format('select public.get_daily_message_count(%L)', current_setting('test.b')) end,
     format('insert into public.messages (chat_id, user_id, role, content) values (%L, %L, ''user'', ''x'')', current_setting('test.b_chat'), current_setting('test.b'))
-  ] loop
+  ], null) loop
     begin
       execute s;
       raise exception 'CURENJE: anon je uspeo da izvrši: %', s;
@@ -326,13 +334,18 @@ begin
   exception when not_null_violation then null;
   end;
 
-  -- brojač za rate limit radi samo serveru
-  select public.get_daily_message_count(b) into n;
-  if n is null then raise exception 'TEST: get_daily_message_count za service_role vratio NULL'; end if;
+  -- stari brojač za rate limit radi samo serveru (dok ga migracija 20261028140000 ne ukloni)
+  if current_setting('test.old_counter')::boolean then
+    select public.get_daily_message_count(b) into n;
+    if n is null then raise exception 'TEST: get_daily_message_count za service_role vratio NULL'; end if;
+  end if;
 end $$;
 reset role;
 
 do $$ begin raise notice 'FAZA 1: svi RLS testovi prošli'; end $$;
-select 'FAZA 1: svi RLS testovi prošli' as rezultat;
+select case when current_setting('test.old_counter')::boolean
+            then 'FAZA 1: svi RLS testovi prošli (stari brojač get_daily_message_count još postoji: čeka migraciju 20261028140000)'
+            else 'FAZA 1: svi RLS testovi prošli (stari brojač uklonjen)'
+       end as rezultat;
 
 rollback;

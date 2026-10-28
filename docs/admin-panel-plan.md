@@ -23,13 +23,13 @@ Plan usaglašen sa korisnikom 2026-10-28, kroz 10 pitanja. Radi se **isključivo
 
 | Oblast | Stanje | Šta treba |
 |---|---|---|
-| Uloga | `profiles.role` (`admin`/`lawyer`) postoji samo u migraciji 2.1, koja **nije primenjena**. | Primeniti 2.1 (Faza 2). |
+| Uloga | `profiles.role` (`admin`/`lawyer`) postoji u bazi (migracija 2.1 primenjena, provereno preko MCP-a 2026-10-28). Nalog bez profila nema ulogu, pa `update ... where email` za njega tiho menja 0 redova. | Pre početka 2.5 svaki nalog mora imati profil (Faza 2, korak 1 zatvaranja). |
 | Provera uloge u kodu | `requireUser()` (`lib/require-user.ts`) ne vraća ulogu. `proxy.ts` proverava samo da li je korisnik prijavljen. | `lib/require-admin.ts` (DAL) i usmeravanje `/admin` u `proxy.ts`. |
 | Admin čitanje audit loga | Polisa `audit_log_select_own_or_admin` daje adminu sve redove na osnovu uloge, bez MFA. | Admin grana polise dobija i `aal2`. |
 | Admin pregled advokata | Pod RLS-om admin ne vidi tuđe profile, dokumente, razgovore ni ledger. Ne vidi ni `auth.users` (email, poslednja prijava, ban). | Uske RPC funkcije samo za admina (vidi „Model pristupa”). |
 | Pozivanje | Ne postoji. Postoje `/register` (javna, `signUp` iz browsera) i `/auth/callback` (`exchangeCodeForSession`, sa open redirect-om koji popravlja 2.6). | Server action za `inviteUserByEmail`, ruta `/auth/confirm` (`token_hash`) i stranica `/set-password`. `/register` se briše. |
 | Blokada | Ne postoji. `documents.user_id` i `chats.user_id` imaju `on delete restrict`, pa se nalog sa podacima ionako ne može obrisati. | `auth.admin.updateUserById(id, { ban_duration })` kroz `supabaseAdmin`. |
-| Limiti | Hardkodovano 40 u `lib/check-rate-limit.ts`. Faza 2 ih seli u env (`DAILY_MESSAGE_LIMIT` i ostale), a `reserve_usage` ih prima kao parametre. | Tabela `office_settings`. Važi `min(podešavanje, env)`. |
+| Limiti | Faza 2 ih je preselila u env (`lib/limits.ts`: `DAILY_MESSAGE_LIMIT` i ostale), a `lib/usage.ts` ih prosleđuje funkciji `reserve_usage` kao parametre. `lib/check-rate-limit.ts` je obrisan. | Tabela `office_settings`. Važi `min(podešavanje, env)`. |
 | MFA | Ne postoji. Prijava ide iz browsera direktno na Supabase Auth (`app/login/page.tsx`). | Prijava faktora, MFA korak posle prijave i provera `aal2`. |
 | Email | Podrazumevani Supabase SMTP šalje malo emailova i nije za produkciju. | Sopstveni SMTP (npr. Resend), deo onboarding-a (Faza 4). |
 | `forbidden()` | U Next 16 je i dalje eksperimentalan (`authInterrupts`). | Ne koristi se. Za neovlašćen pristup koriste se `notFound()` ili `redirect()`. |

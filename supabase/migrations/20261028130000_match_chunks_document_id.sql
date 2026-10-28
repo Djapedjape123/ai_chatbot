@@ -8,6 +8,11 @@
 -- Sve ili ništa: ako bilo koji korak padne, baza ostaje netaknuta.
 begin;
 
+-- Učitava pgvector biblioteku u ovu sesiju. Bez toga `set hnsw.iterative_scan` u create function pada sa
+-- 42501 "permission denied to set parameter" (SQL Editor nije superuser, a parametar koji biblioteka još
+-- nije definisala tretira kao nepoznat). Primećeno 2026-10-28; isto je reprodukovano lokalno sa običnom ulogom.
+select '[1]'::public.vector;
+
 -- Povratni tip se ne može menjati preko create or replace, pa se funkcija ukida i pravi ponovo.
 do $$
 declare r record;
