@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatRequestSchema, uuidSchema, MAX_QUERY_LENGTH, ingestFormSchema, ingestFormInput, MAX_FILE_SIZE } from './validation.ts';
+import {
+  chatRequestSchema,
+  uuidSchema,
+  MAX_QUERY_LENGTH,
+  ingestFormSchema,
+  ingestFormInput,
+  MAX_FILE_SIZE,
+  inviteSchema,
+  roleSchema,
+  settingsSchema,
+  settingsFormInput,
+  SETTINGS_BOUNDS,
+} from './validation.ts';
 
 const UUID = '3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b';
 
@@ -85,4 +97,93 @@ test('ingestFormInput: čita polja iz FormData', () => {
   const r = ingestFormSchema.safeParse(ingestFormInput(fd));
   assert.equal(r.success, true);
   assert.equal(r.data?.acknowledge, true);
+});
+
+// --- Admin panel (2.5): poziv advokata, uloga, podešavanja ---
+
+const firstMessage = (r: { error?: { issues: { message: string }[] } }) => r.error?.issues[0].message;
+
+test('invite: ispravan poziv prolazi, email se svodi na mala slova, ime se trimuje', () => {
+  const r = inviteSchema.safeParse({ email: '  Ana.Petrovic@Kancelarija.RS ', fullName: '  Ana Petrović  ' });
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { email: 'ana.petrovic@kancelarija.rs', fullName: 'Ana Petrović' });
+});
+
+test('invite: neispravan email se odbija porukom na srpskom', () => {
+  for (const bad of [undefined, null, 5, '', '   ', 'abc', 'a@b', 'a b@c.rs', '@c.rs', 'a@@c.rs', `${'a'.repeat(250)}@c.rs`]) {
+    const r = inviteSchema.safeParse({ email: bad, fullName: 'Ana' });
+    assert.equal(r.success, false, `email=${JSON.stringify(bad)}`);
+    assert.equal(firstMessage(r), 'Unesite ispravnu email adresu.', `email=${JSON.stringify(bad)}`);
+  }
+});
+
+test('invite: ime je obavezno, najviše 100 znakova i bez oznaka ni kontrolnih znakova', () => {
+  const msg = (fullName: unknown) => firstMessage(inviteSchema.safeParse({ email: 'a@c.rs', fullName }));
+  for (const bad of [undefined, null, '', '   ']) assert.equal(msg(bad), 'Unesite ime i prezime.', JSON.stringify(bad));
+  assert.equal(inviteSchema.safeParse({ email: 'a@c.rs', fullName: 'a'.repeat(100) }).success, true);
+  assert.match(msg('a'.repeat(101))!, /predugačko.*100/);
+  for (const bad of ['<script>alert(1)</script>', 'Ana <b>', 'Ana\u0000', 'Ana\nPetrović', 'Ana‮Petrović']) {
+    assert.equal(msg(bad), 'Ime sadrži nedozvoljene znakove.', JSON.stringify(bad));
+  }
+  assert.equal(inviteSchema.safeParse({ email: 'a@c.rs', fullName: "Ana-Marija Đorđević-O'Brien" }).success, true);
+});
+
+test('role: samo admin ili lawyer', () => {
+  assert.equal(roleSchema.safeParse('admin').success, true);
+  assert.equal(roleSchema.safeParse('lawyer').success, true);
+  for (const bad of ['superadmin', 'ADMIN', '', ' admin', undefined, null, 1, {}]) {
+    const r = roleSchema.safeParse(bad);
+    assert.equal(r.success, false, JSON.stringify(bad));
+    assert.equal(firstMessage(r), 'Nepoznata uloga.');
+  }
+});
+
+const GOOD_SETTINGS = { dailyMessages: '50', dailyDocuments: '10', dailyTokens: '500000', monthlyTokens: '5000000' };
+
+test('settings: ispravne vrednosti iz forme postaju brojevi', () => {
+  const r = settingsSchema.safeParse(GOOD_SETTINGS);
+  assert.equal(r.success, true);
+  assert.deepEqual(r.data, { dailyMessages: 50, dailyDocuments: 10, dailyTokens: 500_000, monthlyTokens: 5_000_000 });
+  assert.equal(settingsSchema.safeParse({ ...GOOD_SETTINGS, dailyMessages: ' 7 ' }).data?.dailyMessages, 7);
+});
+
+test('settings: granice su iste kao CHECK u bazi (poruke 1-10000, dokumenta 1-1000, tokeni veći od 0)', () => {
+  assert.equal(SETTINGS_BOUNDS.dailyMessages.min, 1);
+  assert.equal(SETTINGS_BOUNDS.dailyMessages.max, 10000);
+  assert.equal(SETTINGS_BOUNDS.dailyDocuments.max, 1000);
+  const ok = (over: Record<string, string>) => settingsSchema.safeParse({ ...GOOD_SETTINGS, ...over }).success;
+  assert.equal(ok({ dailyMessages: '1' }), true);
+  assert.equal(ok({ dailyMessages: '10000' }), true);
+  assert.equal(ok({ dailyMessages: '0' }), false);
+  assert.equal(ok({ dailyMessages: '10001' }), false);
+  assert.equal(ok({ dailyDocuments: '0' }), false);
+  assert.equal(ok({ dailyDocuments: '1001' }), false);
+  assert.equal(ok({ dailyTokens: '0' }), false);
+  assert.equal(ok({ dailyTokens: String(SETTINGS_BOUNDS.dailyTokens.max + 1) }), false);
+  assert.equal(ok({ monthlyTokens: '0' }), false);
+});
+
+test('settings: samo cele nenegativne cifre, bez decimala, eksponenta, znaka i praznog polja', () => {
+  for (const bad of ['', '  ', 'abc', '1.5', '1,5', '1e3', '-1', '+1', '0x10', '１２', '99999999999999999999', null, undefined, 5]) {
+    const r = settingsSchema.safeParse({ ...GOOD_SETTINGS, dailyMessages: bad });
+    assert.equal(r.success, false, JSON.stringify(bad));
+    assert.match(firstMessage(r)!, /Dnevni limit poruka/, JSON.stringify(bad));
+  }
+});
+
+test('settings: mesečni budžet ne sme biti manji od dnevnog', () => {
+  const r = settingsSchema.safeParse({ ...GOOD_SETTINGS, dailyTokens: '600000', monthlyTokens: '500000' });
+  assert.equal(r.success, false);
+  assert.equal(firstMessage(r), 'Mesečni budžet ne može biti manji od dnevnog.');
+  assert.equal(settingsSchema.safeParse({ ...GOOD_SETTINGS, dailyTokens: '500000', monthlyTokens: '500000' }).success, true);
+});
+
+test('settingsFormInput: čita polja iz FormData', () => {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(GOOD_SETTINGS)) fd.set(k, v);
+  fd.set('nepoznato', 'x');
+  const r = settingsSchema.safeParse(settingsFormInput(fd));
+  assert.equal(r.success, true);
+  assert.equal(r.data?.dailyDocuments, 10);
+  assert.equal(settingsSchema.safeParse(settingsFormInput(new FormData())).success, false);
 });

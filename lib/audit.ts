@@ -12,7 +12,17 @@ export type AuditAction =
   | 'chat_deleted'
   | 'question_asked'
   | 'limit_reached'
-  | 'suspicious_content_flagged';
+  | 'suspicious_content_flagged'
+  // Admin panel (2.5). admin_viewed_user, role_changed i settings_changed upisuju RPC funkcije u bazi,
+  // a ostale server akcije posle uspešnog poziva Auth Admin API-ja.
+  | 'user_invited'
+  | 'user_disabled'
+  | 'user_enabled'
+  | 'role_changed'
+  | 'settings_changed'
+  | 'admin_viewed_user'
+  | 'audit_exported'
+  | 'mfa_enrolled';
 
 export type AuditActor = { id: string; email?: string | null };
 
@@ -21,7 +31,7 @@ export type AuditActor = { id: string; email?: string | null };
 type MetadataValue = string | number | boolean | null | string[];
 
 type AuditOptions = {
-  resourceType?: 'document' | 'chat';
+  resourceType?: 'document' | 'chat' | 'user' | 'settings';
   resourceId?: string;
   metadata?: Record<string, MetadataValue>;
   ip?: string | null;

@@ -50,3 +50,78 @@ export const ingestFormSchema = z.object(
 export function ingestFormInput(formData: FormData) {
   return { file: formData.get('file') ?? undefined, acknowledge: formData.get('acknowledge') ?? undefined };
 }
+
+// --- Admin panel (2.5) ---
+
+const emailMessage = 'Unesite ispravnu email adresu.';
+const nameMessage = 'Unesite ime i prezime.';
+
+// Kontrolni znaci, nevidljivi znaci za format (bidi, zero-width) i uglaste zagrade: ime ide u email pozivnice
+// i u user_metadata, pa ne sme da nosi oznake ni znake koji lažiraju smer ispisa.
+const FORBIDDEN_NAME_CHARS = /[\p{Cc}\p{Cf}<>]/u;
+
+// Poziv advokata emailom (server action inviteLawyer).
+export const inviteSchema = z.object(
+  {
+    email: z
+      .string({ error: emailMessage })
+      .trim()
+      .toLowerCase()
+      .max(254, emailMessage)
+      .pipe(z.email({ error: emailMessage })),
+    fullName: z
+      .string({ error: nameMessage })
+      .trim()
+      .min(1, nameMessage)
+      .max(100, 'Ime je predugačko (najviše 100 znakova).')
+      .refine((v) => !FORBIDDEN_NAME_CHARS.test(v), 'Ime sadrži nedozvoljene znakove.'),
+  },
+  { error: invalidBody }
+);
+
+export const roleSchema = z.enum(['admin', 'lawyer'], { error: 'Nepoznata uloga.' });
+
+// Granice podešavanja kancelarije. Poruke i dokumenti su isti kao CHECK u bazi (office_settings), a gornja
+// granica tokena (baza traži samo > 0) štiti od slučajno unetog preogromnog broja.
+export const SETTINGS_BOUNDS = {
+  dailyMessages: { min: 1, max: 10_000 },
+  dailyDocuments: { min: 1, max: 1_000 },
+  dailyTokens: { min: 1, max: 1_000_000_000_000 },
+  monthlyTokens: { min: 1, max: 1_000_000_000_000 },
+} as const;
+
+// Polje iz forme stiže kao tekst: samo cifre (bez znaka, decimala i eksponenta), pa tek onda broj u granicama.
+function settingField(label: string, bounds: { min: number; max: number }) {
+  const notNumber = `${label}: unesite ceo broj.`;
+  const outOfRange = `${label}: dozvoljeno je od ${bounds.min} do ${bounds.max}.`;
+  return z
+    .string({ error: notNumber })
+    .trim()
+    .regex(/^\d+$/, notNumber)
+    .transform(Number)
+    .pipe(z.number().min(bounds.min, outOfRange).max(bounds.max, outOfRange));
+}
+
+export const settingsSchema = z
+  .object(
+    {
+      dailyMessages: settingField('Dnevni limit poruka', SETTINGS_BOUNDS.dailyMessages),
+      dailyDocuments: settingField('Dnevni limit dokumenata', SETTINGS_BOUNDS.dailyDocuments),
+      dailyTokens: settingField('Dnevni budžet obrade', SETTINGS_BOUNDS.dailyTokens),
+      monthlyTokens: settingField('Mesečni budžet obrade', SETTINGS_BOUNDS.monthlyTokens),
+    },
+    { error: invalidBody }
+  )
+  .refine((v) => v.monthlyTokens >= v.dailyTokens, {
+    message: 'Mesečni budžet ne može biti manji od dnevnog.',
+    path: ['monthlyTokens'],
+  });
+
+export function settingsFormInput(formData: FormData) {
+  return {
+    dailyMessages: formData.get('dailyMessages') ?? undefined,
+    dailyDocuments: formData.get('dailyDocuments') ?? undefined,
+    dailyTokens: formData.get('dailyTokens') ?? undefined,
+    monthlyTokens: formData.get('monthlyTokens') ?? undefined,
+  };
+}

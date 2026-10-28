@@ -37,6 +37,39 @@ export function getLimits(env: Env = process.env): Limits {
   };
 }
 
+// Podešavanja kancelarije (tabela office_settings, 2.5): admin ih menja u panelu, a env varijable ostaju
+// gornja granica koju admin ne može da pređe. Važi manja vrednost. Neispravan env nema efekta (nema
+// ograničenja), a limit se ni tada ne gasi, jer postoji podešavanje admina.
+// Bez podešavanja (baza ne odgovara ili red ne postoji) važi stari način: env, odnosno podrazumevane vrednosti.
+export function effectiveLimits(settings: Limits | null, env: Env = process.env): Limits {
+  if (!settings) return getLimits(env);
+  const cap = (setting: number, value: string | undefined) => Math.min(setting, positiveInt(value, Infinity));
+  return {
+    dailyMessages: cap(settings.dailyMessages, env.DAILY_MESSAGE_LIMIT),
+    dailyDocuments: cap(settings.dailyDocuments, env.DAILY_DOCUMENT_LIMIT),
+    dailyTokens: cap(settings.dailyTokens, env.DAILY_TOKEN_BUDGET),
+    monthlyTokens: cap(settings.monthlyTokens, env.MONTHLY_TOKEN_BUDGET),
+  };
+}
+
+// Red iz office_settings. bigint kolone mogu stići kao tekst. Neispravan oblik daje null (važe env i podrazumevane vrednosti).
+export function parseOfficeSettings(data: unknown): Limits | null {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (typeof row !== 'object' || row === null) return null;
+  const r = row as Record<string, unknown>;
+
+  const positive = (v: unknown): number | null => {
+    const n = typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v;
+    return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : null;
+  };
+  const dailyMessages = positive(r.daily_message_limit);
+  const dailyDocuments = positive(r.daily_document_limit);
+  const dailyTokens = positive(r.daily_token_budget);
+  const monthlyTokens = positive(r.monthly_token_budget);
+  if (dailyMessages === null || dailyDocuments === null || dailyTokens === null || monthlyTokens === null) return null;
+  return { dailyMessages, dailyDocuments, dailyTokens, monthlyTokens };
+}
+
 // Gruba procena tokena iz teksta (~3 znaka po tokenu za srpski). Služi samo za rezervaciju;
 // posle poziva se upisuje stvarna potrošnja iz odgovora API-ja.
 export function estimateTokens(text: string): number {

@@ -2,7 +2,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { apiError } from '@/lib/api-error';
-import { getLimits, limitMessage, type LimitReason } from '@/lib/limits';
+import { effectiveLimits, limitMessage, parseOfficeSettings, type LimitReason, type Limits } from '@/lib/limits';
 import { decideIpBurst } from '@/lib/ip-burst';
 import { logAudit, type AuditActor } from '@/lib/audit';
 
@@ -20,8 +20,21 @@ type ReserveRow = {
 };
 
 type ReserveResult =
-  | { ok: true; reservationId: string; errorResponse: null }
-  | { ok: false; reservationId: null; errorResponse: NextResponse };
+  // limits su oni koji su važili pri rezervaciji (isti se koriste za upozorenje na 80% u odgovoru)
+  | { ok: true; reservationId: string; limits: Limits; errorResponse: null }
+  | { ok: false; reservationId: null; limits: null; errorResponse: NextResponse };
+
+// Podešavanja kancelarije (office_settings, 2.5) čitaju se pri svakoj rezervaciji (jedan mali upit), pa
+// promena u admin panelu važi odmah. Env varijable su gornja granica. Ako se podešavanja ne pročitaju,
+// važe env i podrazumevane vrednosti kao do sada: limit se nikad ne gasi.
+async function loadLimits(): Promise<Limits> {
+  const { data, error } = await supabaseAdmin
+    .from('office_settings')
+    .select('daily_message_limit, daily_document_limit, daily_token_budget, monthly_token_budget')
+    .maybeSingle();
+  if (error) console.error('Office Settings Error:', error);
+  return effectiveLimits(parseOfficeSettings(data));
+}
 
 // IP burst (2.8): poziva se na samom početku rute, PRE autentifikacije i čitanja tela, pa poplava zahteva
 // ne stiže ni do Supabase Auth-a, a neispravna otpremanja ne pune audit log. Vraća odgovor kad zahtev
@@ -63,7 +76,7 @@ export async function reserveUsage(
   estimatedTokens: number,
   ip: string | null = null
 ): Promise<ReserveResult> {
-  const limits = getLimits();
+  const limits = await loadLimits();
   const { data, error } = await supabaseAdmin.rpc('reserve_usage', {
     p_user_id: actor.id,
     p_kind: kind,
@@ -81,6 +94,7 @@ export async function reserveUsage(
     return {
       ok: false,
       reservationId: null,
+      limits: null,
       errorResponse: NextResponse.json(
         { error: 'Sistem trenutno ne može da proveri vaš limit. Pokušajte ponovo za par trenutaka.', code: 'usage_unavailable' },
         { status: 503 }
@@ -94,11 +108,12 @@ export async function reserveUsage(
     return {
       ok: false,
       reservationId: null,
+      limits: null,
       errorResponse: NextResponse.json({ error: limitMessage(kind, reason, limits), code: 'limit_reached' }, { status: 429 }),
     };
   }
 
-  return { ok: true, reservationId: row.reservation_id, errorResponse: null };
+  return { ok: true, reservationId: row.reservation_id, limits, errorResponse: null };
 }
 
 async function closeUsage(reservationId: string, userId: string, tokens: ActualTokens, release: boolean) {

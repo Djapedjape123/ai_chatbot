@@ -304,8 +304,10 @@ begin
 end $$;
 reset role;
 
--- 4. C (admin): vidi SVE audit zapise, ali potrošnju samo svoju (ledger nije za admina).
-select set_config('request.jwt.claims', json_build_object('sub', current_setting('test.c'), 'role', 'authenticated')::text, true);
+-- 4. C (admin, prijavljen sa MFA = aal2): vidi SVE audit zapise, ali potrošnju samo svoju (ledger nije za admina).
+--    Od migracije 20261028150000 (Faza 2.5) admin vidi tuđe audit zapise samo sa aal2; admin bez MFA
+--    vidi samo svoje, što proverava phase25_admin_test.sql.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('test.c'), 'role', 'authenticated', 'aal', 'aal2')::text, true);
 select set_config('request.jwt.claim.sub', current_setting('test.c'), true);
 set local role authenticated;
 

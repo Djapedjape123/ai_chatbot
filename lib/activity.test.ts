@@ -30,7 +30,7 @@ const row = (action: string, extra: Partial<ActivityRow> = {}): ActivityRow => (
 const titles = new Map([[DOC, 'Zakon o radu']]);
 
 test('ACTIVITY_ACTIONS: svaka akcija ima opis na srpskom', () => {
-  assert.equal(ACTIVITY_ACTIONS.length, 8);
+  assert.equal(ACTIVITY_ACTIONS.length, 16);
   for (const a of ACTIVITY_ACTIONS) assert.ok(ACTION_LABELS[a].length > 0, a);
 });
 
@@ -139,6 +139,47 @@ test('describeActivity: sumnjiv sadržaj navodi opis obrazaca i da li je korisni
   assert.deepEqual(asked.details, ['Pronađeno: poziv da se zanemare prethodna uputstva', 'Otpremanje nije potvrđeno']);
   const confirmed = describeActivity(row('suspicious_content_flagged', { metadata: { patterns: ['role_override'], acknowledged: true } }), titles);
   assert.equal(confirmed.details[1], 'Korisnik je potvrdio otpremanje');
+});
+
+// --- Admin radnje (2.5) ---
+
+test('describeActivity: poziv, blokada i odblokada naloga navode nalog, bez punog ID-a', () => {
+  const invited = describeActivity(row('user_invited', { resource_type: 'user', resource_id: DOC2, metadata: { email: 'nova@kancelarija.rs' } }), titles);
+  assert.equal(invited.label, 'Pozvan advokat');
+  assert.deepEqual(invited.details, ['Nalog: ID a1b2c3d4', 'Email: nova@kancelarija.rs']);
+  assert.equal(describeActivity(row('user_disabled', { resource_id: DOC2 }), titles).label, 'Blokiran nalog');
+  assert.equal(describeActivity(row('user_enabled', { resource_id: DOC2 }), titles).label, 'Odblokiran nalog');
+  assert.deepEqual(describeActivity(row('user_disabled', { resource_id: DOC2 }), titles).details, ['Nalog: ID a1b2c3d4']);
+});
+
+test('describeActivity: pregled naloga advokata je vidljiv u dnevniku', () => {
+  const d = describeActivity(row('admin_viewed_user', { resource_type: 'user', resource_id: DOC2 }), titles);
+  assert.equal(d.label, 'Pregledan nalog advokata');
+  assert.deepEqual(d.details, ['Nalog: ID a1b2c3d4']);
+});
+
+test('describeActivity: promena uloge pokazuje staru i novu ulogu na srpskom', () => {
+  const d = describeActivity(row('role_changed', { resource_id: DOC2, metadata: { from: 'lawyer', to: 'admin' } }), titles);
+  assert.equal(d.label, 'Promenjena uloga');
+  assert.deepEqual(d.details, ['Nalog: ID a1b2c3d4', 'Uloga: advokat → admin']);
+  // nepoznata uloga u metadata se ne prikazuje kao sirov tekst
+  assert.deepEqual(describeActivity(row('role_changed', { resource_id: DOC2, metadata: { from: '<b>x</b>', to: 'admin' } }), titles).details, ['Nalog: ID a1b2c3d4']);
+});
+
+test('describeActivity: promena podešavanja navodi samo ono što se promenilo', () => {
+  const old = { daily_message_limit: 100, daily_document_limit: 20, daily_token_budget: 1_000_000, monthly_token_budget: 20_000_000 };
+  const d = describeActivity(row('settings_changed', { metadata: { old, new: { ...old, daily_message_limit: 50, monthly_token_budget: 5_000_000 } } }), titles);
+  assert.equal(d.label, 'Promenjena podešavanja');
+  assert.deepEqual(d.details, ['Dnevni limit poruka: 100 → 50', 'Mesečni budžet obrade: 20000000 → 5000000']);
+  assert.deepEqual(describeActivity(row('settings_changed', { metadata: { old, new: old } }), titles).details, []);
+  assert.deepEqual(describeActivity(row('settings_changed', { metadata: { old: 'x', new: [] } }), titles).details, []);
+});
+
+test('describeActivity: izvoz dnevnika i uključena dvostepena prijava', () => {
+  const exported = describeActivity(row('audit_exported', { metadata: { rows: 120 } }), titles);
+  assert.equal(exported.label, 'Izvezen dnevnik aktivnosti');
+  assert.deepEqual(exported.details, ['Izvezeno redova: 120']);
+  assert.deepEqual(describeActivity(row('mfa_enrolled'), titles), { label: 'Uključena dvostepena prijava', details: [] });
 });
 
 test('describeActivity: nepoznata akcija i neispravan metadata ne ruše prikaz', () => {

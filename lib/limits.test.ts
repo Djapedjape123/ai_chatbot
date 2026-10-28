@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getLimits, DEFAULT_LIMITS, usageStatus, estimateTokens, limitMessage, parseUsageSummary, clientUsage } from './limits.ts';
+import {
+  getLimits,
+  DEFAULT_LIMITS,
+  usageStatus,
+  estimateTokens,
+  limitMessage,
+  parseUsageSummary,
+  clientUsage,
+  effectiveLimits,
+  parseOfficeSettings,
+} from './limits.ts';
 
 test('getLimits: bez env-a važe podrazumevani limiti (100 poruka, 20 dokumenata)', () => {
   assert.deepEqual(getLimits({}), DEFAULT_LIMITS);
@@ -102,4 +112,41 @@ test('clientUsage: klijent dobija samo procenat, zastavicu i tekst, bez sirovih 
   const status = usageStatus({ ...BASE_SUMMARY, daily_messages: 85 }, getLimits({}));
   assert.deepEqual(clientUsage(status), { percent: 85, warning: true, message: 'Iskoristili ste 85 od 100 dnevnih poruka.' });
   assert.deepEqual(clientUsage(usageStatus(BASE_SUMMARY, getLimits({}))), { percent: 0, warning: false, message: null });
+});
+
+// --- Podešavanja kancelarije (2.5): admin podešava, env je gornja granica ---
+
+const SETTINGS = { dailyMessages: 50, dailyDocuments: 10, dailyTokens: 500_000, monthlyTokens: 5_000_000 };
+
+test('effectiveLimits: bez env-a važi podešavanje admina', () => {
+  assert.deepEqual(effectiveLimits(SETTINGS, {}), SETTINGS);
+});
+
+test('effectiveLimits: env je gornja granica: manji env pobeđuje, veći ne podiže podešavanje', () => {
+  const l = effectiveLimits(SETTINGS, { DAILY_MESSAGE_LIMIT: '20', DAILY_DOCUMENT_LIMIT: '500', MONTHLY_TOKEN_BUDGET: '1000' });
+  assert.deepEqual(l, { dailyMessages: 20, dailyDocuments: 10, dailyTokens: 500_000, monthlyTokens: 1000 });
+});
+
+test('effectiveLimits: neispravan env je bez efekta, a limit se ni tada ne gasi', () => {
+  for (const bad of ['', '0', '-5', '1.5', 'abc', '1e9']) {
+    assert.equal(effectiveLimits(SETTINGS, { DAILY_MESSAGE_LIMIT: bad }).dailyMessages, 50, `DAILY_MESSAGE_LIMIT=${bad}`);
+  }
+});
+
+test('effectiveLimits: bez podešavanja (baza ne odgovara) važi stari način: env, odnosno podrazumevane vrednosti', () => {
+  assert.deepEqual(effectiveLimits(null, {}), DEFAULT_LIMITS);
+  assert.deepEqual(effectiveLimits(null, { DAILY_MESSAGE_LIMIT: '7' }), getLimits({ DAILY_MESSAGE_LIMIT: '7' }));
+});
+
+test('parseOfficeSettings: red iz baze, bigint kolone mogu stići kao tekst', () => {
+  const row = { daily_message_limit: 50, daily_document_limit: 10, daily_token_budget: '500000', monthly_token_budget: 5_000_000 };
+  assert.deepEqual(parseOfficeSettings(row), SETTINGS);
+  assert.deepEqual(parseOfficeSettings([row]), SETTINGS);
+});
+
+test('parseOfficeSettings: nepotpun ili neispravan red daje null (važe env i podrazumevane vrednosti)', () => {
+  const ok = { daily_message_limit: 50, daily_document_limit: 10, daily_token_budget: 500_000, monthly_token_budget: 5_000_000 };
+  for (const bad of [null, undefined, [], 'x', 5, {}, { ...ok, daily_message_limit: 0 }, { ...ok, daily_document_limit: -1 }, { ...ok, daily_token_budget: 'abc' }, { ...ok, monthly_token_budget: undefined }, { ...ok, daily_message_limit: 1.5 }]) {
+    assert.equal(parseOfficeSettings(bad), null, JSON.stringify(bad));
+  }
 });

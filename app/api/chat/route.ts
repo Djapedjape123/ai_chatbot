@@ -8,7 +8,7 @@ import { buildSystemPrompt } from '@/lib/prompts';
 import { enforceIpBurst, reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
-import { clientUsage, estimateTokens, getLimits, parseUsageSummary, usageStatus } from '@/lib/limits';
+import { clientUsage, estimateTokens, parseUsageSummary, usageStatus } from '@/lib/limits';
 import {
   CHAT_MAX_OUTPUT_TOKENS,
   estimateChatTokens,
@@ -109,6 +109,7 @@ export async function POST(req: Request) {
     );
     if (!reserved.ok) return reserved.errorResponse;
     reservation = { id: reserved.reservationId, userId: user.id };
+    const limits = reserved.limits;
 
     // 3. Razgovor i poruka korisnika (upisi idu preko service_role, sa user_id iz verifikovanog korisnika)
     let activeChatId: string | undefined = chatId;
@@ -282,7 +283,7 @@ export async function POST(req: Request) {
       chatId: activeChatId,
       response: claude.answer,
       sources: sources.map((c) => ({ title: c.document_title, snippet: c.content.slice(0, 150) })),
-      usage: summary ? clientUsage(usageStatus(summary, getLimits())) : undefined,
+      usage: summary ? clientUsage(usageStatus(summary, limits)) : undefined,
     });
   } catch (error) {
     console.error('Chat Exception:', error);

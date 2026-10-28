@@ -17,7 +17,25 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   question_asked: 'Postavljeno pitanje',
   limit_reached: 'Dostignut limit',
   suspicious_content_flagged: 'Sumnjiv sadržaj u dokumentu',
+  user_invited: 'Pozvan advokat',
+  user_disabled: 'Blokiran nalog',
+  user_enabled: 'Odblokiran nalog',
+  role_changed: 'Promenjena uloga',
+  settings_changed: 'Promenjena podešavanja',
+  admin_viewed_user: 'Pregledan nalog advokata',
+  audit_exported: 'Izvezen dnevnik aktivnosti',
+  mfa_enrolled: 'Uključena dvostepena prijava',
 };
+
+const ROLE_LABELS: Record<string, string> = { admin: 'admin', lawyer: 'advokat' };
+
+// Redosled je redosled prikaza; ključevi su kolone office_settings kako ih upisuje admin_update_settings
+const SETTING_LABELS: [key: string, label: string][] = [
+  ['daily_message_limit', 'Dnevni limit poruka'],
+  ['daily_document_limit', 'Dnevni limit dokumenata'],
+  ['daily_token_budget', 'Dnevni budžet obrade'],
+  ['monthly_token_budget', 'Mesečni budžet obrade'],
+];
 
 export const ACTIVITY_ACTIONS = Object.keys(ACTION_LABELS) as AuditAction[];
 
@@ -104,6 +122,10 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
     const size = count(meta.size_bytes);
     if (size !== null) details.push(`Veličina: ${formatSize(size)}`);
   };
+  const userLine = () => {
+    if (row.resource_id) details.push(`Nalog: ${shortId(row.resource_id)}`);
+  };
+  const roleName = (v: unknown) => (typeof v === 'string' && Object.hasOwn(ROLE_LABELS, v) ? ROLE_LABELS[v] : null);
 
   switch (action) {
     case 'document_uploaded': {
@@ -156,6 +178,40 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
       else if (meta.acknowledged === false) details.push('Otpremanje nije potvrđeno');
       break;
     }
+    case 'user_invited': {
+      userLine();
+      if (typeof meta.email === 'string' && meta.email.length > 0) details.push(`Email: ${meta.email.slice(0, 254)}`);
+      break;
+    }
+    case 'user_disabled':
+    case 'user_enabled':
+    case 'admin_viewed_user':
+      userLine();
+      break;
+    case 'role_changed': {
+      userLine();
+      const from = roleName(meta.from);
+      const to = roleName(meta.to);
+      if (from && to) details.push(`Uloga: ${from} → ${to}`);
+      break;
+    }
+    case 'settings_changed': {
+      if (isRecord(meta.old) && isRecord(meta.new)) {
+        for (const [key, label] of SETTING_LABELS) {
+          const before = count(meta.old[key]);
+          const after = count(meta.new[key]);
+          if (before !== null && after !== null && before !== after) details.push(`${label}: ${before} → ${after}`);
+        }
+      }
+      break;
+    }
+    case 'audit_exported': {
+      const rows = count(meta.rows);
+      if (rows !== null) details.push(`Izvezeno redova: ${rows}`);
+      break;
+    }
+    case 'mfa_enrolled':
+      break;
   }
 
   return { label: ACTION_LABELS[action], details };
