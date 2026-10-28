@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRagContext, sanitizeTitle, MAX_TITLE_LENGTH } from './rag-context.ts';
+import { buildRagContext, sanitizeTitle, uniqueDocumentIds, MAX_TITLE_LENGTH } from './rag-context.ts';
 
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
@@ -62,4 +62,32 @@ test('sanitizeTitle: razmaci se skupljaju, naslov se skraćuje, prazan dobija za
 test('sanitizeTitle: nije string (null iz baze) ne ruši pretragu', () => {
   assert.equal(sanitizeTitle(null as unknown as string), 'dokument');
   assert.equal(sanitizeTitle(undefined as unknown as string), 'dokument');
+});
+
+const DOC_A = '11111111-1111-4111-8111-111111111111';
+const DOC_B = '22222222-2222-4222-8222-222222222222';
+
+test('uniqueDocumentIds: jedinstveni ID-evi dokumenata, redom prvog pojavljivanja', () => {
+  const chunks = [
+    { document_id: DOC_B, content: 'x' },
+    { document_id: DOC_A, content: 'y' },
+    { document_id: DOC_B, content: 'z' },
+  ];
+  assert.deepEqual(uniqueDocumentIds(chunks), [DOC_B, DOC_A]);
+});
+
+test('uniqueDocumentIds: bez document_id (funkcija u bazi još nije ažurirana) daje prazan niz, ne grešku', () => {
+  assert.deepEqual(uniqueDocumentIds([{ content: 'x' }, {}]), []);
+  assert.deepEqual(uniqueDocumentIds([]), []);
+});
+
+test('uniqueDocumentIds: u audit ne ulazi ništa što nije UUID (nikad tekst dokumenta)', () => {
+  const chunks = [
+    { document_id: 'Ugovor o zajmu.pdf' },
+    { document_id: 42 },
+    { document_id: null },
+    { document_id: DOC_A.toUpperCase() },
+    { document_id: DOC_A },
+  ];
+  assert.deepEqual(uniqueDocumentIds(chunks), [DOC_A]);
 });

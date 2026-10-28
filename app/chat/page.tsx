@@ -31,6 +31,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  // Upozorenje servera kada potrošnja pređe 80% nekog limita (blokada na 100% stiže kao 429)
+  const [usageWarning, setUsageWarning] = useState<string | null>(null);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -198,6 +200,7 @@ export default function Home() {
       }
 
       setMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
+      setUsageWarning(data.usage?.warning ? (data.usage.message ?? 'Približavate se limitu potrošnje.') : null);
 
       if (!activeChatId) {
         setActiveChatId(data.chatId);
@@ -334,6 +337,15 @@ export default function Home() {
         {/* DONJE POLJE ZA KUCANJE */}
         <div className="border-t border-[#16263D]/10 px-4 md:px-6 py-3 md:py-4 max-w-3xl mx-auto w-full bg-[#F7F3EC] pb-safe">
           
+          {usageWarning && (
+            <p
+              role="status"
+              className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs md:text-sm text-amber-900"
+            >
+              ⚠️ {usageWarning} Pri 100% pitanja se privremeno blokiraju.
+            </p>
+          )}
+
           {attachedFileName && (
             <div className="mb-3 flex items-center gap-2 bg-white border border-[#16263D]/20 px-3 py-1.5 rounded-md shadow-sm w-fit max-w-full">
                <span className="text-xs text-[#16263D] font-medium truncate">📄 {attachedFileName}</span>

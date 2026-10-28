@@ -147,6 +147,11 @@ begin
   select count(*), count(*) filter (where document_title <> 'RLS-TEST B dokument') into n, m
   from public.match_document_chunks(array_fill(0.01::real, array[1024])::public.vector, 20);
   if m > 0 or n <> 1 then raise exception 'CURENJE: match_document_chunks za B vratio % redova (% tuđih), očekivano 1 (0 tuđih)', n, m; end if;
+  -- document_id (audit question_asked) mora biti B-ov dokument, nikad A-ov
+  select count(*) into m
+  from public.match_document_chunks(array_fill(0.01::real, array[1024])::public.vector, 20)
+  where document_id is distinct from current_setting('test.b_doc')::uuid;
+  if m > 0 then raise exception 'CURENJE: match_document_chunks za B vratio % redova sa tuđim document_id', m; end if;
 
   -- tuđe redove ne može da obriše (RLS: 0 pogođenih redova, ne greška)
   delete from public.chats where id = a_chat;
@@ -210,6 +215,10 @@ begin
   select count(*), count(*) filter (where document_title <> 'RLS-TEST A dokument') into n, m
   from public.match_document_chunks(array_fill(0.01::real, array[1024])::public.vector, 20);
   if m > 0 or n <> 2 then raise exception 'CURENJE: match_document_chunks za A vratio % redova (% tuđih), očekivano 2 (0 tuđih)', n, m; end if;
+  select count(*) into m
+  from public.match_document_chunks(array_fill(0.01::real, array[1024])::public.vector, 20)
+  where document_id is distinct from current_setting('test.a_doc')::uuid;
+  if m > 0 then raise exception 'CURENJE: match_document_chunks za A vratio % redova sa tuđim document_id', m; end if;
 
   delete from public.chats where id = b_chat;
   get diagnostics n = row_count;
