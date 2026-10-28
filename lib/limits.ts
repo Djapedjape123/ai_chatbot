@@ -86,6 +86,8 @@ export type UsageSummary = {
 export type UsageStatus = {
   summary: UsageSummary;
   limits: Limits;
+  // Limit sa najvećim procentom (pri izjednačenju prvi po redu), da admin panel kaže KOJI je limit blizu
+  topKey: LimitKey;
   // Najveći procenat iskorišćenosti među svim limitima (0-100+), za traku u UI-ju
   maxPercent: number;
   warning: boolean;
@@ -93,7 +95,7 @@ export type UsageStatus = {
   warningMessage: string | null;
 };
 
-type LimitKey = keyof UsageSummary;
+export type LimitKey = keyof UsageSummary;
 
 function warningText(key: LimitKey, summary: UsageSummary, limits: Limits, ratio: number): string {
   const percent = Math.round(ratio * 100);
@@ -122,6 +124,7 @@ export function usageStatus(summary: UsageSummary, limits: Limits): UsageStatus 
   return {
     summary,
     limits,
+    topKey,
     maxPercent: Math.round(max * 100),
     warning,
     warningMessage: warning ? warningText(topKey, summary, limits, max) : null,

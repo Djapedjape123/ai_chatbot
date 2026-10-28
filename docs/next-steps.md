@@ -12,8 +12,9 @@ Za detalje i obrazloženja: `docs/admin-panel-plan.md` (plan) i `CLAUDE.md` (sta
 | 2.5.1 Migracija admin panela + SQL test | Primenjena na Supabase-u, testovi prošli |
 | 2.5.2 Zajednički kod (`lib/`) | Napisan i commit-ovan (`2fd9840`); izmena `/api/chat` još nije potvrđena na produkciji |
 | 2.5.3 MFA (kapija, `/login/mfa`, `/account/security`) | Commit-ovan i na GitHub-u (`a505cd5`); **na produkciji nije potvrđeno da radi** (u bazi nema reda u `usage_ledger` posle 2.5.2 ni zapisa `mfa_enrolled`), čeka tvoj test (odeljak 1A) |
-| 2.5.4 Pozivnica i postavljanje lozinke | Kod napisan, `npm test` 207/207, ruta i `proxy.ts` probani lokalno (29 provera); **nije commit-ovan ni pušten** (odeljak 2, „2.5.4") |
-| 2.5.5 do 2.5.10 | Nije počelo: nema nijedne admin stranice, nijedan admin ne postoji |
+| 2.5.4 Pozivnica i postavljanje lozinke | Commit-ovan i na GitHub-u (`4316a87`); ruta i `proxy.ts` probani lokalno (29 provera); **na produkciji nije potvrđeno** (odeljak 2, „2.5.4") |
+| 2.5.5 Admin okvir i pregled | Kod napisan, `npm test` 231/231, probano lokalno (27 provera); **nije commit-ovan ni pušten** (odeljak 2, „2.5.5"). Nijedan admin još ne postoji u bazi |
+| 2.5.6 do 2.5.10 | Nije počelo |
 | 3. Bezbednost fajlova | Posle 2.5 |
 | 4. Isporuka kancelariji | Posle faze 3 |
 
@@ -94,7 +95,7 @@ isto kao `/activity`), bez nove biblioteke. Pre izmene `proxy.ts` Claude čita `
 Jedno odstupanje od ranijeg opisa: proxy nema poseban slučaj za `/admin/*` (ne zna ulogu bez upita u bazu); admin bez koda se usmerava iz
 `/admin` layout-a u 2.5.5.
 
-### 2.5.4 Pozivnica i postavljanje lozinke — URAĐENO, čeka commit i tvoj test
+### 2.5.4 Pozivnica i postavljanje lozinke — URAĐENO i commit-ovano (`4316a87`), čeka tvoj test
 Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.4". Ukratko: `/auth/confirm` (poziv i reset, samo
 te dve vrste, `next` samo na naš sajt), `/set-password`, `/link-expired`, zajednička forma (12 znakova i na `/reset-password`), `/register` obrisana
 (uključujući dva dugmeta na početnoj stranici, koja plan nije pominjao). Lokalno: 207/207 testova, 26 namernih grešaka uhvaćeno, 29 provera na
@@ -102,16 +103,27 @@ pravom `next start` sa lažnim Auth serverom. **Nije viđeno:** pravi Supabase, 
 
 **Tvoj deo (redom):**
 1. **B3, B4, B9** (URL Configuration, SMTP, minimalna dužina lozinke). Bez SMTP-a Supabase šalje samo članovima tvoje organizacije.
-2. Commit i push (predlog poruke: `faza 2.5.4 pozivnica`). **Pažnja:** `main` je produkcija, a ovo menja `proxy.ts` i uklanja `/register`.
+2. ~~Commit i push~~ **Urađeno** (`4316a87`). Proveri samo da je Production „Ready". **Pažnja:** ovo je menjalo `proxy.ts` i uklonilo `/register`.
 3. Kad je Production „Ready", **pre menjanja šablona**: otvori `/auth/confirm?token_hash=x&type=invite` (mora da prikaže „Link nije važeći"),
    `/register` (mora da te vrati na prijavu) i početnu stranicu (nema „Započni besplatno").
 4. **B8:** zalepi šablone iz `docs/email-templates.md`, pa prođi proveru na dnu tog fajla (reset, poziv iz Dashboard-a, isti link drugi put).
 5. Ako imaš nalog sa uključenim MFA: reset lozinke za njega (`/forgot-password` → mejl → kod iz aplikacije → nova lozinka). Javi ishod ako puca.
 6. Javi Claude-u ishod; sledeći korak je 2.5.5.
 
-### 2.5.5 Admin okvir i pregled
-`app/admin/layout.tsx` (`requireAdmin()`: `null` je `notFound()`, `mfa !== 'ok'` je `redirect`), navigacija (Pregled · Advokati · Aktivnost ·
-Podešavanja · Nazad na chat), `app/admin/page.tsx` (zbirne brojke i lista advokata preko 80% nekog limita).
+### 2.5.5 Admin okvir i pregled — URAĐENO, čeka commit i tvoj test
+Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.5". Ukratko: `/admin` (Pregled): nalozi (ukupno,
+aktivni, pozvani, blokirani), potrošnja (poruke, dokumenti, obrada, najveći potrošač), važeći limiti i lista advokata na 80% ili više limita.
+Pristup proveravaju layout I svaka stranica; advokat dobija 404 (bez ijednog teksta panela, ni u naslovu taba), admin bez koda se vodi na
+unos koda ili uključivanje MFA. Lokalno: 231/231 testova, 25 namernih grešaka uhvaćeno, 27 provera na pravom `next start` sa lažnim
+Supabase-om. **Nije viđeno:** pravi Supabase sa pravim `aal2` tokenom, izgled u browseru, pravi MFA tok.
+
+**Tvoj deo (redom):**
+1. Commit i push (predlog poruke: `faza 2.5.5 admin pregled`). `main` je produkcija; ovo dodaje samo novu rutu `/admin` i ne menja postojeće stranice.
+2. Kad je Production „Ready": odeljak 3 ispod („Prvi admin"): SQL za ulogu, MFA na `/account/security`, prijava sa kodom, pa otvori
+   `https://<tvoj-domen>/admin` (**linka u aplikaciji još nema**, stiže u 2.5.9).
+3. Očekuješ: Ukupno 3, Aktivni 3, Pozvani 0, Blokirani 0; poruke i dokumenti danas prema tvojoj upotrebi; „Nijedan advokat nije blizu limita".
+4. Proveri i da te `/admin` ne pušta: (a) u incognito prozoru bez prijave vodi na prijavu; (b) sa običnim advokatskim nalogom (npr. jedan od druga dva
+   u bazi) daje 404; (c) sa adminom koji ima MFA, a još nije uneo kod, traži kod. Javi ishod.
 
 ### 2.5.6 Advokati
 `app/admin/users/page.tsx` (tabela iz `admin_list_users`: status aktivan/pozvan/blokiran, MFA, poslednja prijava, potrošnja sa trakom),
@@ -149,4 +161,4 @@ Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/bu
 ## 5. Šta uneti na početku sledećeg ćaskanja
 Kopiraj:
 > Pročitaj `CLAUDE.md` i `docs/next-steps.md`. Završio sam sledeće iz odeljka 1: (nabroj A1, A2…). Evo ishoda: (rezultati/greške).
-> Nastavi od koraka 2.5.5 (admin okvir i pregled).
+> Nastavi od koraka 2.5.6 (advokati: tabela, pregled jednog advokata, poziv, blokada, uloga).

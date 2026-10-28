@@ -29,6 +29,16 @@ test('getLimits: neispravna vrednost ne isključuje limit, već pada na podrazum
   }
 });
 
+test('usageStatus: topKey je limit sa najvećim procentom (pri izjednačenju prvi po redu)', () => {
+  const limits = getLimits({});
+  const zero = { daily_messages: 0, daily_documents: 0, daily_tokens: 0, monthly_tokens: 0 };
+  assert.equal(usageStatus({ ...zero, daily_messages: 85 }, limits).topKey, 'daily_messages');
+  assert.equal(usageStatus({ ...zero, daily_documents: 17 }, limits).topKey, 'daily_documents');
+  assert.equal(usageStatus({ ...zero, daily_tokens: 900_000 }, limits).topKey, 'daily_tokens');
+  assert.equal(usageStatus({ ...zero, monthly_tokens: 18_000_000 }, limits).topKey, 'monthly_tokens');
+  assert.equal(usageStatus({ ...zero, daily_messages: 90, daily_documents: 18 }, limits).topKey, 'daily_messages');
+});
+
 test('usageStatus: upozorenje od 80% bilo kog limita', () => {
   const limits = getLimits({});
   const base = { daily_messages: 0, daily_documents: 0, daily_tokens: 0, monthly_tokens: 0 };
