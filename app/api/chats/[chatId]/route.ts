@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import { uuidSchema } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
+import { logAudit } from '@/lib/audit';
+import { getClientIp } from '@/lib/client-ip';
 
 export async function DELETE(
   req: Request,
@@ -15,7 +18,7 @@ export async function DELETE(
 
     // Neispravan ID ne stiže do baze: za klijenta je to isto što i nepostojeći razgovor
     if (!uuidSchema.safeParse(chatId).success) {
-      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+      return apiError('Razgovor nije pronađen.', 404, 'not_found');
     }
 
     // 2. BRISANJE JEDNIM POZIVOM preko korisničkog klijenta.
@@ -30,12 +33,19 @@ export async function DELETE(
     if (error) throw error;
 
     if (!deleted || deleted.length === 0) {
-      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+      return apiError('Razgovor nije pronađen.', 404, 'not_found');
     }
+
+    // 3. AUDIT tek posle stvarnog brisanja (upis ide kroz supabaseAdmin, nikad ne ruši zahtev)
+    await logAudit({ id: user.id, email: user.email }, 'chat_deleted', {
+      resourceType: 'chat',
+      resourceId: chatId,
+      ip: getClientIp(req.headers),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Delete Chat Error:', error);
-    return NextResponse.json({ error: 'Greška pri brisanju razgovora.' }, { status: 500 });
+    return apiError('Greška pri brisanju razgovora.', 500, 'chat_delete_failed');
   }
 }

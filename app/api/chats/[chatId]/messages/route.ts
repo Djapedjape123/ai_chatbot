@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import { uuidSchema } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(
   req: Request,
@@ -15,7 +16,7 @@ export async function GET(
 
     // Neispravan ID ne stiže do baze: za klijenta je to isto što i nepostojeći razgovor
     if (!uuidSchema.safeParse(chatId).success) {
-      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+      return apiError('Razgovor nije pronađen.', 404, 'not_found');
     }
 
     // 2. PROVERA VLASNIŠTVA preko korisničkog klijenta: RLS vraća samo korisnikove razgovore,
@@ -29,7 +30,7 @@ export async function GET(
     if (chatError) throw chatError;
 
     if (!chat) {
-      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+      return apiError('Razgovor nije pronađen.', 404, 'not_found');
     }
 
     // 3. DOHVATANJE PORUKA (Sortirano hronološki)
@@ -44,6 +45,6 @@ export async function GET(
     return NextResponse.json({ messages });
   } catch (error) {
     console.error('Fetch Messages Error:', error);
-    return NextResponse.json({ error: 'Greška pri učitavanju poruka.' }, { status: 500 });
+    return apiError('Greška pri učitavanju poruka.', 500, 'messages_load_failed');
   }
 }
