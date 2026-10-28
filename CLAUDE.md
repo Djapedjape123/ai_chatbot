@@ -8,7 +8,7 @@ Cilj je da se proizvod prodaje advokatskim kancelarijama kao B2B rešenje. Zahte
 ## Status faza
 
 - [x] **FAZA 1: Supabase i baza (izolacija podataka). ZAVRŠENA (korisnik potvrdio 2026-10-28; E2E i isključenu registraciju nisam sam proverio).** Korak 1 (dijagnostika) urađen 2026-10-27 preko Supabase MCP-a (`.mcp.json`, `read_only=true`). **Migracija `supabase/migrations/20261027120000_phase1_data_isolation.sql` primenjena 2026-10-27** (SQL Editor, bez backup-a: Free plan, samo CSV izvoz). Kod (Korak 3) je spojen u `main` (`ef50a9c`) i push-ovan. Verifikovano: (1) `supabase/tests/phase1_rls_test.sql` prošao ("FAZA 1: svi RLS testovi prošli"); (2) napad spolja sa anon ključem: `GET` na `documents`, `chats`, `messages`, `document_chunks`, `profiles` vraća `42501`, stari RPC potpis `PGRST202`, novi RPC i `get_daily_message_count` `42501`; (3) Advisors Security: sa 7 upozorenja na 2 (ostaju `vector` u šemi `public` i isključena zaštita od procurelih lozinki); (4) `tsc`, lint (0 grešaka) i build prolaze, a `server-only` je proveren negativnim testom. **Preostaje za zatvaranje Faze 1:** E2E sa dva naloga (tačka 5 verifikacije) i isključivanje "Allow new users to sign up" u Dashboard-u (razlog: javni anon ključ omogućava da bilo ko napravi nalog direktno preko Auth API-ja, pa sakrivanje `/register` stranice ne štiti; advokate poziva admin). Rute vraćaju 404 umesto 403 za tuđe razgovore (tuđi izgleda isto kao nepostojeći).
-- [ ] **FAZA 2: Zaštita API ruta.** Rate limiting + potrošnja tokena, prompt injection, zod validacija, audit log. Detaljan plan i odluke su u odeljku „FAZA 2” ispod (plan usaglašen sa korisnikom 2026-10-28, kroz 20 pitanja). **U toku na grani `phase2-api-protection`:** urađeni su zod za `/api/chat` i `chats/[chatId]/*`, ograda RAG konteksta (`lib/rag-context.ts`) i čišćenje zavisnosti (0 ranjivosti). Sledi korak 2.0.
+- [ ] **FAZA 2: Zaštita API ruta.** Rate limiting + potrošnja tokena, prompt injection, zod validacija, audit log. Detaljan plan i odluke su u odeljku „FAZA 2” ispod (plan usaglašen sa korisnikom 2026-10-28, kroz 20 pitanja). **U toku na grani `phase2-api-protection`:** urađeni su zod za `/api/chat` i `chats/[chatId]/*`, ograda RAG konteksta (`lib/rag-context.ts`) i čišćenje zavisnosti (0 ranjivosti), spojeno u `main` (`c87bdf6`) posle testa na preview-u. Korak 2.0 urađen 2026-10-28. Sledi 2.1 (migracija, traži odobrenje korisnika).
 - [ ] **FAZA 3: Bezbednost fajlova.** PDF/Word, malware, makroi. Prioritet odmah posle Faze 2.
 - [ ] **FAZA 4: Isporuka kancelariji.** Poseban Vercel + Supabase projekat po kancelariji (silo). **Docker/on-prem je odbačen** (odluka korisnika 2026-10-28).
 
@@ -392,6 +392,18 @@ Opseg: rate limiting i potrošnja tokena, zaštita od prompt injection napada, v
 Radi se na grani `phase2-api-protection`. Posle svakog koraka: `tsc`, lint, build, `npm test`, pa commit, push i test na Vercel preview-u. Migracija se primenjuje tek kad je kod spreman (isti redosled kao u Fazi 1).
 
 **2.0 Priprema.** Dijagnostika postojećeg: da li `profiles` postoji i koje kolone ima (`supabase/diagnostics/phase2_audit.sql`, samo čita). Proveriti kako radi prijava: ako ide iz browsera direktno na Supabase Auth, IP limit za login ne može u našem kodu, već u Supabase Auth rate limit podešavanjima (Dashboard) i/ili Vercel Firewall pravilu. Instalirati `zod`.
+
+**Rezultat 2.0 (2026-10-28, `supabase/diagnostics/phase2_audit.sql` preko read-only MCP-a):**
+- `profiles` (`id` uuid PK → `auth.users` ON DELETE CASCADE, `full_name`, `email`, `created_at`) postoji i ima RLS sa polisom `profiles_select_own`. **`authenticated` nema nikakav grant**, pa polisa sada ne služi ničemu. Migracija 2.1 mora da da `grant select` (bez UPDATE, pa uloga ostaje nepromenljiva za korisnika).
+- Profil pravi trigger `on_auth_user_created` → `handle_new_user()` (`security definer`, `search_path = ''`, OK). Kolona `role` sa default-om `lawyer` radi i za nove naloge, bez izmene triggera.
+- **3 korisnika, 2 profila: jedan nalog nema profil.** Migracija 2.1 mora da popuni nedostajuće profile (`insert ... select from auth.users ... on conflict do nothing`), inače taj nalog nema ulogu.
+- **Ko je admin:** korisnik pre 2.1 kaže koji email dobija `admin`. Taj `update` ide u migraciju ili se radi ručno, ali ne kroz kod.
+- `pg_cron` je dostupan, ali nije uključen. Retencija od 90 dana ide preko `pg_cron` (uključivanje ekstenzije je deo 2.1).
+- `usage_ledger` i `audit_log` ne postoje. Trenutno ima 0 dokumenata i 0 poruka u poslednjih 24h.
+- `get_daily_message_count(uuid)` je dostupan samo za `service_role` (Faza 1). Uklanja se u 2.1, a zamenjuje ga rezervacija.
+- **Prijava ide iz browsera direktno na Supabase Auth** (`app/login/page.tsx`, `register`, `forgot-password`), pa IP limit za login, registraciju i reset lozinke **ne može u našem kodu**. Rešenje: Dashboard → Authentication → Rate Limits (radi vlasnik), a IP burst iz 2.8 važi samo za `/api/chat` i `/api/ingest`.
+- **Open redirect** u `app/auth/callback/route.ts`: `${origin}${next}` sa `next=@evil.com` daje `https://app@evil.com`, što browser otvara kao `evil.com`. Popravka je u 2.6 (`next` mora da počinje sa `/`, a ne sa `//` ni `/\`).
+- `zod` 4 je već instaliran.
 
 **2.1 Migracija `supabase/migrations/<timestamp>_phase2_usage_audit.sql`** (jedna transakcija, pravila 3-4 važe):
 - `profiles.role` (`admin` | `lawyer`, default `lawyer`), CHECK ograničenje. Korisnik ne sme da menja svoju ulogu (nema UPDATE grant).
