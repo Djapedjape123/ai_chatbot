@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
+import { uuidSchema } from '@/lib/validation';
 
 export async function GET(
   req: Request,
@@ -12,6 +13,11 @@ export async function GET(
     const { user, supabase, errorResponse } = await requireUser();
     if (!user) return errorResponse!;
 
+    // Neispravan ID ne stiže do baze: za klijenta je to isto što i nepostojeći razgovor
+    if (!uuidSchema.safeParse(chatId).success) {
+      return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
+    }
+
     // 2. PROVERA VLASNIŠTVA preko korisničkog klijenta: RLS vraća samo korisnikove razgovore,
     // pa tuđi razgovor izgleda isto kao nepostojeći (404).
     const { data: chat, error: chatError } = await supabase
@@ -20,10 +26,9 @@ export async function GET(
       .eq('id', chatId)
       .maybeSingle();
 
-    // 22P02 = chatId nije validan UUID, što je za klijenta isto što i nepostojeći razgovor
-    if (chatError && chatError.code !== '22P02') throw chatError;
+    if (chatError) throw chatError;
 
-    if (chatError || !chat) {
+    if (!chat) {
       return NextResponse.json({ error: 'Razgovor nije pronađen.' }, { status: 404 });
     }
 
