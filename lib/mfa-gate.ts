@@ -57,7 +57,7 @@ const ALLOW: MfaGate = { kind: 'allow' };
 const DENY: MfaGate = { kind: 'deny' };
 
 // Posle koda korisnik ne treba da se vrati na početnu ili prijavu, pa tamo /login/mfa ne dobija next (važi /chat).
-const ENTRY_PAGES = new Set(['/', '/login', '/register', '/forgot-password']);
+const ENTRY_PAGES = new Set(['/', '/login', '/forgot-password']);
 
 // Stranica za unos koda i /auth/* (callback, confirm: samo uspostavljaju sesiju i preusmeravaju dalje, kroz kapiju).
 function isExempt(pathname: string): boolean {

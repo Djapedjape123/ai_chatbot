@@ -7,17 +7,11 @@ export default function Navbar() {
         Pravni Asistent<span className="text-[#16263D]/50">.ai</span>
       </div>
       <div className="flex items-center gap-4">
-        <Link 
-          href="/login" 
-          className="text-sm font-medium hover:opacity-70 transition hidden sm:block"
-        >
-          Prijavi se
-        </Link>
-        <Link 
-          href="/register" 
+        <Link
+          href="/login"
           className="text-sm font-medium bg-[#16263D] text-[#F7F3EC] px-4 py-2 rounded-md hover:bg-[#16263D]/90 transition"
         >
-          Započni besplatno
+          Prijavi se
         </Link>
       </div>
     </nav>

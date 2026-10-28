@@ -18,19 +18,14 @@ export default function Hero() {
         Ubacite PDF, postavite pitanje i dobijte tačan odgovor zasnovan isključivo na vašim dokumentima.
       </p>
 
-      <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
-        <Link 
-          href="/register" 
+      <div className="flex flex-col items-center gap-3 w-full justify-center">
+        <Link
+          href="/login"
           className="w-full sm:w-auto px-8 py-4 rounded-md bg-[#16263D] text-[#F7F3EC] text-lg font-medium hover:bg-[#16263D]/90 transition shadow-lg shadow-[#16263D]/10"
         >
-          Isprobaj odmah
+          Prijavite se
         </Link>
-        <Link 
-          href="/login" 
-          className="w-full sm:w-auto px-8 py-4 rounded-md bg-white border border-[#16263D]/20 text-lg font-medium hover:bg-gray-50 transition"
-        >
-          Imam nalog
-        </Link>
+        <p className="text-sm text-[#16263D]/60">Nalog vam otvara administrator vaše kancelarije.</p>
       </div>
     </section>
   );

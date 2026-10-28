@@ -98,10 +98,7 @@ export default function LoginPage() {
         </p>
 
         <p className="text-sm text-[#16263D]/60 text-center mt-4">
-          Nemate nalog?{' '}
-          <Link href="/register" className="text-[#16263D] underline">
-            Registrujte se
-          </Link>
+          Nalog vam otvara administrator kancelarije.
         </p>
       </div>
     </div>

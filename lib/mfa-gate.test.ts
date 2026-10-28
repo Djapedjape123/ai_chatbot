@@ -108,7 +108,7 @@ test('decideMfaGate: upit (?id=...) se čuva u parametru next, ispravno kodiran'
 });
 
 test('decideMfaGate: početna i stranice za prijavu vode na /login/mfa bez next (podrazumevano je /chat)', () => {
-  for (const pathname of ['/', '/login', '/register', '/forgot-password']) {
+  for (const pathname of ['/', '/login', '/forgot-password']) {
     assert.deepEqual(decideMfaGate({ ...pending, pathname, method: 'GET' }), { kind: 'redirect', to: '/login/mfa' }, pathname);
   }
 });

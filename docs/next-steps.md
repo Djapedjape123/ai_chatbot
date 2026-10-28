@@ -11,8 +11,9 @@ Za detalje i obrazloženja: `docs/admin-panel-plan.md` (plan) i `CLAUDE.md` (sta
 | 2. Zaštita API ruta | Gotova (preostale stavke su dole, odeljak 1D) |
 | 2.5.1 Migracija admin panela + SQL test | Primenjena na Supabase-u, testovi prošli |
 | 2.5.2 Zajednički kod (`lib/`) | Napisan i commit-ovan (`2fd9840`); izmena `/api/chat` još nije potvrđena na produkciji |
-| 2.5.3 MFA (kapija, `/login/mfa`, `/account/security`) | Kod napisan, `npm test` 176/176, kapija probana lokalno; **nije commit-ovan ni pušten, čeka tvoj test (odeljak 1A)** |
-| 2.5.4 do 2.5.10 | Nije počelo: nema nijedne admin stranice, nijedan admin ne postoji |
+| 2.5.3 MFA (kapija, `/login/mfa`, `/account/security`) | Commit-ovan i na GitHub-u (`a505cd5`); **na produkciji nije potvrđeno da radi** (u bazi nema reda u `usage_ledger` posle 2.5.2 ni zapisa `mfa_enrolled`), čeka tvoj test (odeljak 1A) |
+| 2.5.4 Pozivnica i postavljanje lozinke | Kod napisan, `npm test` 207/207, ruta i `proxy.ts` probani lokalno (29 provera); **nije commit-ovan ni pušten** (odeljak 2, „2.5.4") |
+| 2.5.5 do 2.5.10 | Nije počelo: nema nijedne admin stranice, nijedan admin ne postoji |
 | 3. Bezbednost fajlova | Posle 2.5 |
 | 4. Isporuka kancelariji | Posle faze 3 |
 
@@ -24,9 +25,8 @@ Već urađeno: `phase2_rls_test.sql` je prošao (2026-10-28), a kod 2.5.1 i 2.5.
 1. **Pre nego što pustiš 2.5.3: pošalji jednu poruku u chat na produkciji** (Vercel deploy mora biti „Ready"). U `usage_ledger` još nema
    nijednog reda posle izmene iz 2.5.2 (poslednji je iz 15:57, smoke test Faze 2). Javi Claude-u da proveri novi red. Razlog: 2.5.3 menja
    i `/api/chat` (prelazak na `requireUser()`), pa ako bi chat posle toga prestao da radi, ne bi se znalo koja je izmena kriva.
-2. **Commit i push 2.5.3** (`git status` pokazuje šta je novo: `proxy.ts`, `lib/mfa-*`, `lib/require-*`, `app/login/`, `app/account/`, izmene
-   `/api/chat`, `app/actions/documents.ts` i `app/activity/page.tsx`, plus dokumenti). Predlog poruke: `faza 2.5.3 mfa`.
-   **Pažnja:** `main` je produkcija, pa ovo odmah menja pravu aplikaciju, uključujući `proxy.ts` (kapiju cele aplikacije).
+2. ~~Commit i push 2.5.3~~ **Urađeno** (`a505cd5`, na GitHub-u). Ostaje samo da proveriš da je Production „Ready" pre koraka 1 i 3.
+   Podsetnik: `main` je produkcija, pa je ovo već promenilo pravu aplikaciju, uključujući `proxy.ts` (kapiju cele aplikacije).
 3. **Posle deploy-a (Production „Ready") testiraj ovim redom:**
    1. Običan prozor, nalog još bez MFA: prijava, chat i dokumenti moraju da rade kao pre. Ako ne rade, javi odmah; izlaz je
       vraćanje (`git revert`) tog commit-a.
@@ -49,9 +49,10 @@ Putanje u Supabase Dashboard-u (Authentication je u levom meniju):
 | 3 | URL Configuration | Pre testiranja 2.5.4 | Site URL = produkcioni domen. Redirect URLs: produkcioni domen + Vercel preview šablon (npr. `https://*-tvoj-tim.vercel.app/**`) |
 | 4 | Sopstveni SMTP (npr. Resend, EU region) | Pre testiranja 2.5.4 | Authentication → SMTP Settings. Podrazumevani SMTP šalje vrlo malo mejlova i nije za produkciju. Resend traži da potvrdiš domen preko DNS zapisa |
 | 5 | Rate Limits | Pre pilota | Authentication → Rate Limits: prođi login, registraciju i reset lozinke (ne prolaze kroz naš kod) |
-| 6 | Zaštita od procurelih lozinki | Pre pilota | Authentication → Password security. Advisors je i dalje prijavljuje, pa nije uključena ili je tvoj plan ne dozvoljava |
+| 6 | Zaštita od procurelih lozinki | Pre pilota | Authentication → Sign In / Providers → Email. **Samo Pro plan i više** (Supabase dokumentacija); na Free planu je nema, zato je Advisors i dalje prijavljuje. Još jedan razlog za Pro (backup je prvi, Faza 4) |
 | 7 | JWT expiry 1 sat ili kraće | Pre pilota | Blokiran nalog zadržava važeći token do isteka |
-| 8 | **Email šabloni (Invite user i Reset password)** | **TEK kad je 2.5.4 na produkciji** | Tekst šablona će ti dati Claude u koraku 2.5.4. **Ne menjaj ih ranije:** novi link vodi na `/auth/confirm` koje još ne postoji, pa bi reset lozinke prestao da radi |
+| 8 | **Email šabloni (Invite user i Reset password)** | **TEK kad je 2.5.4 na produkciji** | Tačan tekst i koraci provere: `docs/email-templates.md`. **Ne menjaj ih ranije:** novi link vodi na `/auth/confirm` koje do deploy-a ne postoji, pa bi reset lozinke prestao da radi |
+| 9 | **Minimalna dužina lozinke = 12** | Pre testiranja 2.5.4 | Authentication → Sign In / Providers → Email → Minimum password length. Forma u aplikaciji već traži 12, ali **samo ovo podešavanje to stvarno primorava**: lozinka ide iz pregledača direktno Supabase-u, pa ko ima sesiju može da zaobiđe formu. Ostavi „Require reauthentication when changing password" isključeno (naša forma ne podržava taj tok) |
 
 ### C. Odluke koje čekaju tebe (potvrdi ili promeni, može jednom rečenicom)
 1. **CSV izvoz koristi `;` kao razdvajač** (srpski Excel očekuje `;`, a zarez je tamo decimalni znak). Jedna konstanta, lako se menja.
@@ -93,13 +94,20 @@ isto kao `/activity`), bez nove biblioteke. Pre izmene `proxy.ts` Claude čita `
 Jedno odstupanje od ranijeg opisa: proxy nema poseban slučaj za `/admin/*` (ne zna ulogu bez upita u bazu); admin bez koda se usmerava iz
 `/admin` layout-a u 2.5.5.
 
-### 2.5.4 Pozivnica i postavljanje lozinke
-- `app/auth/confirm/route.ts` (`verifyOtp`, tip samo `invite` ili `recovery`, `next` kroz `safeRedirectPath`), `app/set-password/page.tsx`
-  (najmanje 12 znakova; ista dužina i na `/reset-password`, koja sad traži 6).
-- Briše se `app/register/page.tsx`, link „Registrujte se" i `/register` u `proxy.ts`; umesto linka tekst „Nalog vam otvara administrator kancelarije."
-- Claude ti daje tačan tekst oba email šablona. **Redosled:** prvo deploy ovog koda, TEK ONDA menjaš šablone (B8).
-- Reset lozinke za nalog sa uključenim MFA: Supabase može da traži kod pre promene lozinke, pa se taj tok proverava i prilagođava ovde (vidi plan, „Rezultat 2.5.3", poznato).
-- **Tvoj deo za test:** B3 i B4 (URL Configuration, SMTP), pa B8.
+### 2.5.4 Pozivnica i postavljanje lozinke — URAĐENO, čeka commit i tvoj test
+Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.4". Ukratko: `/auth/confirm` (poziv i reset, samo
+te dve vrste, `next` samo na naš sajt), `/set-password`, `/link-expired`, zajednička forma (12 znakova i na `/reset-password`), `/register` obrisana
+(uključujući dva dugmeta na početnoj stranici, koja plan nije pominjao). Lokalno: 207/207 testova, 26 namernih grešaka uhvaćeno, 29 provera na
+pravom `next start` sa lažnim Auth serverom. **Nije viđeno:** pravi Supabase, mejl, forma u browseru, tok reseta za nalog sa MFA.
+
+**Tvoj deo (redom):**
+1. **B3, B4, B9** (URL Configuration, SMTP, minimalna dužina lozinke). Bez SMTP-a Supabase šalje samo članovima tvoje organizacije.
+2. Commit i push (predlog poruke: `faza 2.5.4 pozivnica`). **Pažnja:** `main` je produkcija, a ovo menja `proxy.ts` i uklanja `/register`.
+3. Kad je Production „Ready", **pre menjanja šablona**: otvori `/auth/confirm?token_hash=x&type=invite` (mora da prikaže „Link nije važeći"),
+   `/register` (mora da te vrati na prijavu) i početnu stranicu (nema „Započni besplatno").
+4. **B8:** zalepi šablone iz `docs/email-templates.md`, pa prođi proveru na dnu tog fajla (reset, poziv iz Dashboard-a, isti link drugi put).
+5. Ako imaš nalog sa uključenim MFA: reset lozinke za njega (`/forgot-password` → mejl → kod iz aplikacije → nova lozinka). Javi ishod ako puca.
+6. Javi Claude-u ishod; sledeći korak je 2.5.5.
 
 ### 2.5.5 Admin okvir i pregled
 `app/admin/layout.tsx` (`requireAdmin()`: `null` je `notFound()`, `mfa !== 'ok'` je `redirect`), navigacija (Pregled · Advokati · Aktivnost ·
@@ -141,4 +149,4 @@ Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/bu
 ## 5. Šta uneti na početku sledećeg ćaskanja
 Kopiraj:
 > Pročitaj `CLAUDE.md` i `docs/next-steps.md`. Završio sam sledeće iz odeljka 1: (nabroj A1, A2…). Evo ishoda: (rezultati/greške).
-> Nastavi od koraka 2.5.4 (pozivnica i postavljanje lozinke).
+> Nastavi od koraka 2.5.5 (admin okvir i pregled).

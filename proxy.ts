@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { apiError } from '@/lib/api-error';
 import { MFA_REQUIRED_MESSAGE, countVerifiedFactors, decideMfaGate, readAal } from '@/lib/mfa-gate';
+import { isPublicPath } from '@/lib/route-access';
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
@@ -43,21 +44,15 @@ export async function proxy(request: NextRequest) {
     return target;
   };
 
-  // 1. Stranice za prijavu
-  const isAuthPage =
-    pathname === '/login' ||
-    pathname === '/register' ||
-    pathname === '/forgot-password';
+  // 1. Stranice za prijavu (javna registracija je ukinuta: nalog otvara administrator pozivnicom)
+  const isAuthPage = pathname === '/login' || pathname === '/forgot-password';
 
   // 2. Početna (Landing) stranica
   const isHomePage = pathname === '/';
 
-  // 3. Sistemske rute
-  const isCallbackRoute = pathname.startsWith('/auth/callback');
-  const isResetPage = pathname === '/reset-password';
-
-  // PRAVILO 1: Nije ulogovan, a pokušava da ode negde što NIJE javno (Auth, Landing, Callback, Reset) -> baci ga na login
-  if (!user && !isAuthPage && !isHomePage && !isCallbackRoute && !isResetPage) {
+  // PRAVILO 1: Nije ulogovan, a pokušava da ode negde što NIJE javno (lib/route-access.ts) -> baci ga na login.
+  // /auth/confirm je javna jer ga otvara odjavljen korisnik sa linka iz emaila (pozivnica, reset lozinke).
+  if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return withSessionCookies(NextResponse.redirect(url));
