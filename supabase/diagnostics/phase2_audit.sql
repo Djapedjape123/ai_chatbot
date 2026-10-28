@@ -17,11 +17,15 @@ select jsonb_pretty(jsonb_build_object(
   'profiles_constraints', (
     select jsonb_agg(jsonb_build_object('name', conname, 'def', pg_get_constraintdef(oid)))
     from pg_constraint where conrelid = to_regclass('public.profiles')),
+  -- has_table_privilege, a ne information_schema: read-only uloga (MCP) ne vidi tuđe grantove u
+  -- information_schema.role_table_grants, pa bi prazan rezultat lažno izgledao kao "nema granta".
   'profiles_grants', (
-    select jsonb_agg(jsonb_build_object('role', grantee, 'privilege', privilege_type))
-    from information_schema.role_table_grants
-    where table_schema = 'public' and table_name = 'profiles'
-      and grantee in ('anon', 'authenticated', 'service_role')),
+    select jsonb_object_agg(r.role, jsonb_build_object(
+             'select', has_table_privilege(r.role, 'public.profiles', 'select'),
+             'insert', has_table_privilege(r.role, 'public.profiles', 'insert'),
+             'update', has_table_privilege(r.role, 'public.profiles', 'update'),
+             'delete', has_table_privilege(r.role, 'public.profiles', 'delete')))
+    from unnest(array['anon', 'authenticated', 'service_role']) as r(role)),
   -- Trigger koji pravi profil pri registraciji (auth.users -> public.profiles)
   'auth_users_triggers', (
     select jsonb_agg(jsonb_build_object('name', t.tgname, 'function', t.tgfoid::regprocedure::text,
