@@ -8,6 +8,7 @@ import {
   estimateChatTokens,
   parseClaudeResponse,
   parseVoyageResponse,
+  parseVoyageBatchResponse,
 } from './claude.ts';
 
 test('getClaudeModel: bez env-a važi podrazumevani model', () => {
@@ -90,4 +91,41 @@ test('parseVoyageResponse: prazan, nenumerički ili nepostojeći vektor daje nul
   for (const bad of [null, {}, { data: [] }, { data: [{}] }, { data: [{ embedding: [] }] }, { data: [{ embedding: ['a'] }] }, { data: [{ embedding: [NaN] }] }, { data: 'x' }]) {
     assert.equal(parseVoyageResponse(bad), null, JSON.stringify(bad));
   }
+});
+
+test('parseVoyageBatchResponse: vraća vektore po redosledu ulaza i stvarne tokene', () => {
+  const r = parseVoyageBatchResponse(
+    { data: [{ embedding: [1, 2], index: 0 }, { embedding: [3, 4], index: 1 }], usage: { total_tokens: 99 } },
+    2
+  );
+  assert.deepEqual(r, { embeddings: [[1, 2], [3, 4]], tokens: 99 });
+});
+
+test('parseVoyageBatchResponse: ako odgovor stigne izmešan, redosled određuje index', () => {
+  const r = parseVoyageBatchResponse({ data: [{ embedding: [2], index: 1 }, { embedding: [1], index: 0 }] }, 2);
+  assert.deepEqual(r?.embeddings, [[1], [2]]);
+});
+
+test('parseVoyageBatchResponse: bez usage polja tokeni su null', () => {
+  assert.equal(parseVoyageBatchResponse({ data: [{ embedding: [1] }] }, 1)?.tokens, null);
+});
+
+test('parseVoyageBatchResponse: pogrešan broj vektora daje null (pasus bi dobio tuđ ili nikakav vektor)', () => {
+  assert.equal(parseVoyageBatchResponse({ data: [{ embedding: [1] }] }, 2), null);
+  assert.equal(parseVoyageBatchResponse({ data: [{ embedding: [1] }, { embedding: [2] }] }, 1), null);
+});
+
+test('parseVoyageBatchResponse: bilo koji neispravan vektor ili neispravan index daje null', () => {
+  const bad: unknown[] = [
+    null,
+    {},
+    { data: 'x' },
+    { data: [{ embedding: [1] }, {}] },
+    { data: [{ embedding: [1] }, { embedding: [] }] },
+    { data: [{ embedding: [1] }, { embedding: ['a'] }] },
+    { data: [{ embedding: [1] }, { embedding: [NaN] }] },
+    { data: [{ embedding: [1], index: 0 }, { embedding: [2], index: 0 }] },
+    { data: [{ embedding: [1], index: 0 }, { embedding: [2], index: 5 }] },
+  ];
+  for (const b of bad) assert.equal(parseVoyageBatchResponse(b, 2), null, JSON.stringify(b));
 });

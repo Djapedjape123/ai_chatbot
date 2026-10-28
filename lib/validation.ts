@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_FILE_SIZE } from './ingest.ts';
 
 // Limit na dužinu pojedinačnog upita
 export const MAX_QUERY_LENGTH = 4000;
@@ -23,8 +24,8 @@ export const chatRequestSchema = z.object(
   { error: invalidBody }
 );
 
-// Vercel prima najviše ~4.5MB tela zahteva, pa je stvarni limit 4MB (ne 10MB kao u staroj poruci)
-export const MAX_FILE_SIZE = 4 * 1024 * 1024;
+// Limit veličine fajla je u lib/ingest.ts (deli ga i klijent)
+export { MAX_FILE_SIZE };
 
 // FormData za POST /api/ingest. acknowledge=true šalje korisnik koji je video upozorenje
 // o sumnjivom sadržaju i ipak želi da nastavi (2.4).

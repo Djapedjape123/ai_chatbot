@@ -56,6 +56,31 @@ export function parseClaudeResponse(data: unknown): ClaudeResult | null {
   };
 }
 
+const isEmbedding = (v: unknown): v is number[] =>
+  Array.isArray(v) && v.length > 0 && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+
+export type VoyageBatchResult = { embeddings: number[][]; tokens: number | null };
+
+// Odgovor Voyage-a za paket pasusa (/api/ingest). Mora da ima tačno `expected` vektora: pasus bez
+// vektora (ili sa tuđim) ne sme u bazu. Ako stignu sa `index`, redosled ulaza određuje index.
+export function parseVoyageBatchResponse(data: unknown, expected: number): VoyageBatchResult | null {
+  if (!isRecord(data) || !Array.isArray(data.data) || data.data.length !== expected) return null;
+
+  const embeddings: number[][] = new Array(expected);
+  for (let pos = 0; pos < data.data.length; pos++) {
+    const item: unknown = data.data[pos];
+    if (!isRecord(item) || !isEmbedding(item.embedding)) return null;
+    const slot = item.index === undefined ? pos : item.index;
+    if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot >= expected || embeddings[slot] !== undefined) {
+      return null;
+    }
+    embeddings[slot] = item.embedding;
+  }
+
+  const usage = isRecord(data.usage) ? data.usage : {};
+  return { embeddings, tokens: tokenCount(usage.total_tokens) };
+}
+
 export type VoyageResult = { embedding: number[]; tokens: number | null };
 
 export function parseVoyageResponse(data: unknown): VoyageResult | null {

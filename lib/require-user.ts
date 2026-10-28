@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { apiError } from '@/lib/api-error';
 
 export async function requireUser() {
   const supabase = await createClient();
@@ -12,7 +12,7 @@ export async function requireUser() {
     return {
       user: null,
       supabase: null,
-      errorResponse: NextResponse.json({ error: 'Niste prijavljeni.' }, { status: 401 }),
+      errorResponse: apiError('Niste prijavljeni.', 401, 'unauthorized'),
     };
   }
 

@@ -21,7 +21,18 @@ export function normalizeForDetection(text: string): string {
     .replace(/\s+/g, ' ');
 }
 
-const PATTERNS: { id: string; re: RegExp }[] = [
+export type PatternId = 'ignore_instructions' | 'prompt_reference' | 'reveal_prompt' | 'role_override' | 'fake_delimiter';
+
+// Opis obrasca za upozorenje korisniku (record sa svim ID-evima: novi obrazac bez opisa ne prolazi tsc)
+export const PATTERN_LABELS: Record<PatternId, string> = {
+  ignore_instructions: 'poziv da se zanemare prethodna uputstva',
+  prompt_reference: 'pominjanje sistemskih uputstava AI asistenta',
+  reveal_prompt: 'zahtev da asistent otkrije svoja uputstva',
+  role_override: 'pokušaj da se asistentu promeni uloga',
+  fake_delimiter: 'oznake koje imitiraju strukturu sistema',
+};
+
+const PATTERNS: { id: PatternId; re: RegExp }[] = [
   { id: 'ignore_instructions', re: /\b(ignore|disregard|forget)\b.{0,30}\b(previous|prior|above|all|earlier)\b.{0,20}\b(instructions?|rules|prompts?)\b/ },
   { id: 'ignore_instructions', re: /\b(ignorisi|zanemari|zaboravi|ne obaziraj se na)\b.{0,30}\b(prethodn\w*|gornj\w*|sv\w*|ranij\w*)\b.{0,20}\b(uputstv\w*|instrukcij\w*|pravil\w*|naredb\w*)\b/ },
   { id: 'prompt_reference', re: /\b(system prompt|sistemsk\w* prompt|sistemsk\w* (uputstv|instrukcij)\w*)\b/ },
@@ -33,7 +44,7 @@ const PATTERNS: { id: string; re: RegExp }[] = [
   { id: 'fake_delimiter', re: /\[\/?(inst|system)\]|<\|im_(start|end)\|>/ },
 ];
 
-export type SuspiciousResult = { suspicious: boolean; patterns: string[] };
+export type SuspiciousResult = { suspicious: boolean; patterns: PatternId[] };
 
 export function detectSuspiciousContent(text: string): SuspiciousResult {
   const normalized = normalizeForDetection(text);
