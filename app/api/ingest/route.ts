@@ -6,7 +6,7 @@ import { requireUser } from '@/lib/require-user';
 import { apiError } from '@/lib/api-error';
 import { ingestFormInput, ingestFormSchema } from '@/lib/validation';
 import { sanitizeTitle } from '@/lib/rag-context';
-import { reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
+import { enforceIpBurst, reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { parseVoyageBatchResponse } from '@/lib/claude';
@@ -49,11 +49,16 @@ export async function POST(req: Request) {
   };
 
   try {
-    // 0. Autentifikacija (pre bilo kakvog parsiranja tela)
+    // 0. IP burst zaštita (pre autentifikacije i parsiranja tela: poplava zahteva i ponovljena neispravna
+    //    otpremanja ne smeju da pune audit log ni da troše CPU na PDF-ovima)
+    const ip = getClientIp(req.headers);
+    const burstBlock = await enforceIpBurst(ip);
+    if (burstBlock) return burstBlock;
+
+    // 0.2 Autentifikacija (pre bilo kakvog parsiranja tela)
     const { user, errorResponse } = await requireUser();
     if (!user) return errorResponse!;
     const actor = { id: user.id, email: user.email };
-    const ip = getClientIp(req.headers);
 
     // 0.5 Validacija (zod): fajl je obavezan, ne prazan, najviše 4MB i PDF; acknowledge je 'true' ili 'false'
     let formData: FormData;

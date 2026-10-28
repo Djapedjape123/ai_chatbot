@@ -22,7 +22,7 @@ type Env = Record<string, string | undefined>;
 
 // Neispravna vrednost (prazno, nula, negativno, decimalno, tekst) tiho pada na podrazumevanu:
 // greška u env-u ne sme da isključi limit.
-function positiveInt(value: string | undefined, fallback: number): number {
+export function positiveInt(value: string | undefined, fallback: number): number {
   if (!value || !/^\d+$/.test(value.trim())) return fallback;
   const n = Number(value.trim());
   return Number.isSafeInteger(n) && n > 0 ? n : fallback;

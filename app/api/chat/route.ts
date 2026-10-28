@@ -5,7 +5,7 @@ import { apiError } from '@/lib/api-error';
 import { chatRequestSchema } from '@/lib/validation';
 import { buildRagContext, uniqueDocumentIds } from '@/lib/rag-context';
 import { buildSystemPrompt } from '@/lib/prompts';
-import { reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
+import { enforceIpBurst, reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { clientUsage, estimateTokens, getLimits, parseUsageSummary, usageStatus } from '@/lib/limits';
@@ -33,7 +33,12 @@ export async function POST(req: Request) {
   const spent: ActualTokens = {};
 
   try {
-    // 0. Autentifikacija
+    // 0. IP burst zaštita (pre autentifikacije: poplava zahteva ne sme da stigne ni do Supabase Auth-a)
+    const ip = getClientIp(req.headers);
+    const burstBlock = await enforceIpBurst(ip);
+    if (burstBlock) return burstBlock;
+
+    // 0.2 Autentifikacija
     const supabaseServer = await createClient();
     const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
 
@@ -41,7 +46,6 @@ export async function POST(req: Request) {
       return apiError('Niste ulogovani ili je sesija istekla.', 401, 'unauthorized');
     }
     const actor = { id: user.id, email: user.email };
-    const ip = getClientIp(req.headers);
 
     // 0.5 Validacija tela zahteva (zod): pitanje je string 1-4000 karaktera posle trim-a, chatId je UUID ili ga nema
     let body: unknown;

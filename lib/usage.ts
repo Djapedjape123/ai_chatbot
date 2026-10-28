@@ -1,7 +1,9 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { apiError } from '@/lib/api-error';
 import { getLimits, limitMessage, type LimitReason } from '@/lib/limits';
+import { decideIpBurst } from '@/lib/ip-burst';
 import { logAudit, type AuditActor } from '@/lib/audit';
 
 // Usage ledger (migracija 2.1): rezervacija PRE poziva AI servisa, zatvaranje POSLE.
@@ -20,6 +22,40 @@ type ReserveRow = {
 type ReserveResult =
   | { ok: true; reservationId: string; errorResponse: null }
   | { ok: false; reservationId: null; errorResponse: NextResponse };
+
+// IP burst (2.8): poziva se na samom početku rute, PRE autentifikacije i čitanja tela, pa poplava zahteva
+// ne stiže ni do Supabase Auth-a, a neispravna otpremanja ne pune audit log. Vraća odgovor kad zahtev
+// treba odbiti (429 ili 503, fail-closed), a null kad sme dalje. Blokada se namerno ne upisuje u audit log:
+// poplava bi ga punila, a Vercel logovi već pokazuju 429.
+export async function enforceIpBurst(ip: string | null): Promise<NextResponse | null> {
+  const decision = await decideIpBurst(ip, async (key, limit, windowSeconds) => {
+    const { data, error } = await supabaseAdmin.rpc('hit_ip_rate_limit', {
+      p_ip: key,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
+    if (error) console.error('IP Burst Error:', error);
+    return { data, error };
+  });
+
+  switch (decision.kind) {
+    case 'allow':
+      return null;
+    case 'blocked':
+      return apiError(
+        'Previše zahteva u kratkom roku sa vaše mreže. Sačekajte nekoliko sekundi i pokušajte ponovo.',
+        429,
+        'too_many_requests',
+        { 'Retry-After': String(decision.retryAfterSeconds) }
+      );
+    case 'unavailable':
+      return apiError(
+        'Sistem trenutno ne može da proveri ograničenje zahteva. Pokušajte ponovo za par trenutaka.',
+        503,
+        'rate_limit_unavailable'
+      );
+  }
+}
 
 export async function reserveUsage(
   actor: AuditActor,

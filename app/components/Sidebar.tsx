@@ -74,9 +74,17 @@ export default function Sidebar({
       <Link
         href="/documents"
         onClick={onClose}
-        className="mb-6 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
+        className="mb-3 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
       >
         📚 Vaši dokumenti
+      </Link>
+
+      <Link
+        href="/activity"
+        onClick={onClose}
+        className="mb-6 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
+      >
+        🕘 Aktivnost
       </Link>
 
       <div className="text-xs text-[#F7F3EC]/50 uppercase tracking-wider mb-2 px-1">Istorija</div>
