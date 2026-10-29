@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Stranice panela. Nove (Advokati, Aktivnost, Podešavanja) se dodaju ovde kad budu napravljene (2.5.6 do 2.5.8),
+// Stranice panela. Nove (Aktivnost, Podešavanja) se dodaju ovde kad budu napravljene (2.5.7 i 2.5.8),
 // da navigacija nikad ne vodi na stranicu koja ne postoji.
-const ITEMS = [{ href: '/admin', label: 'Pregled' }];
+const ITEMS = [
+  { href: '/admin', label: 'Pregled' },
+  { href: '/admin/users', label: 'Advokati' },
+];
 
 // Klijentska komponenta jer layout ne vidi trenutnu putanju (ne izvršava se ponovo pri navigaciji).
 export default function AdminNav() {

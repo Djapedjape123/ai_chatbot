@@ -7,6 +7,7 @@ import {
   parseAdminUsers,
   summarizeOffice,
   userStatus,
+  userUsage,
   type AdminUser,
 } from './admin-overview.ts';
 import { DEFAULT_LIMITS } from './limits.ts';
@@ -25,6 +26,7 @@ function rawRow(overrides: Record<string, unknown> = {}) {
     email_confirmed_at: '2026-10-01T08:05:00Z',
     last_sign_in_at: '2026-10-28T09:00:00Z',
     banned_until: null,
+    disabled_at: null,
     has_mfa: false,
     documents_count: 3,
     chats_count: 7,
@@ -47,6 +49,7 @@ function user(overrides: Partial<AdminUser> = {}): AdminUser {
     emailConfirmedAt: '2026-10-01T08:05:00Z',
     lastSignInAt: null,
     bannedUntil: null,
+    disabledAt: null,
     hasMfa: false,
     documentsCount: 0,
     chatsCount: 0,
@@ -72,6 +75,7 @@ test('parseAdminUsers: red iz RPC-a se prevodi u camelCase', () => {
     emailConfirmedAt: '2026-10-01T08:05:00Z',
     lastSignInAt: '2026-10-28T09:00:00Z',
     bannedUntil: null,
+    disabledAt: null,
     hasMfa: false,
     documentsCount: 3,
     chatsCount: 7,
@@ -114,6 +118,9 @@ test('parseAdminUsers: sve što nije niz, ili ima i jedan neispravan red, daje n
     { monthly_tokens: Number.MAX_SAFE_INTEGER + 1 },
     { documents_count: undefined },
     { banned_until: 'nije datum' },
+    { disabled_at: 'nije datum' },
+    { disabled_at: 5 },
+    { disabled_at: undefined },
     { created_at: null },
   ];
   for (const override of badRows) {
@@ -139,6 +146,42 @@ test('userStatus: istekla blokada je aktivan nalog', () => {
 
 test('userStatus: blokada ima prednost nad pozivom', () => {
   assert.equal(userStatus(user({ emailConfirmedAt: null, bannedUntil: '2126-01-01T00:00:00Z' }), NOW), 'blocked');
+});
+
+test('parseAdminUsers: disabled_at iz baze postaje disabledAt', () => {
+  const [u] = parseAdminUsers([rawRow({ disabled_at: '2026-10-20T08:00:00Z' })]) ?? [];
+  assert.equal(u.disabledAt, '2026-10-20T08:00:00Z');
+});
+
+test('userStatus: oznaka blokade u profilu blokira nalog i bez Auth bana (pristupni token važi do isteka)', () => {
+  assert.equal(userStatus(user({ disabledAt: '2026-10-20T08:00:00Z' }), NOW), 'blocked');
+});
+
+test('userStatus: oznaka blokade pobeđuje i istekao ban i neprihvaćen poziv', () => {
+  assert.equal(userStatus(user({ disabledAt: '2026-10-20T08:00:00Z', bannedUntil: '2026-10-21T00:00:00Z' }), NOW), 'blocked');
+  assert.equal(userStatus(user({ disabledAt: '2026-10-20T08:00:00Z', emailConfirmedAt: null }), NOW), 'blocked');
+});
+
+// --- userUsage ---
+
+test('userUsage: procenat najopterećenijeg limita i njegov opis', () => {
+  assert.deepEqual(userUsage(user({ dailyMessages: 10 }), DEFAULT_LIMITS), { percent: 10, reason: 'Poruke danas: 10 od 100' });
+  assert.deepEqual(userUsage(user({ dailyMessages: 10, monthlyTokens: 18_000_000 }), DEFAULT_LIMITS), {
+    percent: 90,
+    reason: 'Mesečni budžet obrade: 90%',
+  });
+});
+
+test('userUsage: bez potrošnje je 0%, a preko limita se procenat ne skraćuje', () => {
+  assert.equal(userUsage(user(), DEFAULT_LIMITS).percent, 0);
+  assert.equal(userUsage(user({ dailyMessages: 130 }), DEFAULT_LIMITS).percent, 130);
+});
+
+test('userUsage: koristi prosleđene limite', () => {
+  assert.deepEqual(userUsage(user({ dailyDocuments: 3 }), { ...DEFAULT_LIMITS, dailyDocuments: 4 }), {
+    percent: 75,
+    reason: 'Dokumenti danas: 3 od 4',
+  });
 });
 
 // --- displayName / formatNumber ---
@@ -170,6 +213,12 @@ test('summarizeOffice: broji naloge po stanju', () => {
   assert.equal(s.total, 4);
   assert.equal(s.active, 2);
   assert.equal(s.invited, 1);
+  assert.equal(s.blocked, 1);
+});
+
+test('summarizeOffice: nalog blokiran oznakom u profilu se broji kao blokiran', () => {
+  const s = summarizeOffice([user({ id: 'a' }), user({ id: 'b', disabledAt: '2026-10-20T08:00:00Z' })], DEFAULT_LIMITS, NOW);
+  assert.equal(s.active, 1);
   assert.equal(s.blocked, 1);
 });
 
@@ -250,6 +299,11 @@ test('nearLimit: blokiran nalog ne troši, pa se ne prijavljuje; ostali podaci r
   const [hit] = nearLimit([user({ id: 'y', email: 'y@k.rs', fullName: null, dailyMessages: 90 })], DEFAULT_LIMITS, NOW);
   assert.equal(hit.id, 'y');
   assert.equal(hit.name, 'y@k.rs');
+});
+
+test('nearLimit: nalog blokiran oznakom u profilu se ne prijavljuje', () => {
+  const blocked = user({ id: 'x', dailyMessages: 99, disabledAt: '2026-10-20T08:00:00Z' });
+  assert.deepEqual(nearLimit([blocked], DEFAULT_LIMITS, NOW), []);
 });
 
 test('nearLimit: koristi prosleđene limite (ne podrazumevane)', () => {

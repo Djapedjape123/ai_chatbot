@@ -79,6 +79,10 @@ export const inviteSchema = z.object(
   { error: invalidBody }
 );
 
+export function inviteFormInput(formData: FormData) {
+  return { email: formData.get('email') ?? undefined, fullName: formData.get('fullName') ?? undefined };
+}
+
 export const roleSchema = z.enum(['admin', 'lawyer'], { error: 'Nepoznata uloga.' });
 
 // Granice podešavanja kancelarije. Poruke i dokumenti su isti kao CHECK u bazi (office_settings), a gornja

@@ -34,7 +34,8 @@ export default function LoginPage() {
     setLoading(false);
 
     if (signInError) {
-      setError('Pogrešan email ili lozinka.');
+      // Ista poruka za pogrešnu lozinku i za blokiran nalog (Auth ban): ne otkriva da li nalog postoji ni da je blokiran
+      setError('Pogrešan email ili lozinka. Ako problem traje, obratite se administratoru kancelarije.');
       return;
     }
 

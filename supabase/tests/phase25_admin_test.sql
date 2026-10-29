@@ -165,7 +165,9 @@ begin
       coalesce(to_regprocedure('public.admin_list_users()')::oid, 0),
       coalesce(to_regprocedure('public.admin_get_user(uuid)')::oid, 0),
       coalesce(to_regprocedure('public.admin_set_role(uuid, text)')::oid, 0),
-      coalesce(to_regprocedure('public.admin_update_settings(integer, integer, bigint, bigint)')::oid, 0)
+      coalesce(to_regprocedure('public.admin_update_settings(integer, integer, bigint, bigint)')::oid, 0),
+      -- dodato u 2.5.6 (migracija 20261029100000); njena svojstva proverava phase256_users_test.sql
+      coalesce(to_regprocedure('public.admin_set_disabled(uuid, boolean)')::oid, 0)
     ]);
   if n > 0 then raise exception 'CURENJE: % dodatnih security definer funkcija je dostupno anon/authenticated', n; end if;
 

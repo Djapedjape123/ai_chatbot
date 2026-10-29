@@ -14,6 +14,8 @@ export type AdminUser = {
   emailConfirmedAt: string | null;
   lastSignInAt: string | null;
   bannedUntil: string | null;
+  // Oznaka blokade u profilu (2.5.6): važi odmah, a ne tek kad istekne pristupni token
+  disabledAt: string | null;
   hasMfa: boolean;
   documentsCount: number;
   chatsCount: number;
@@ -26,7 +28,7 @@ export type AdminUser = {
 export type UserStatus = 'active' | 'invited' | 'blocked';
 
 // Brojač iz baze: ceo broj >= 0. bigint kolone (tokeni) ume da stigne kao tekst.
-function count(value: unknown): number | null {
+export function parseCount(value: unknown): number | null {
   const n = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
   return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
@@ -39,7 +41,8 @@ function nullableDate(value: unknown): value is string | null {
   return value === null || validDate(value);
 }
 
-function parseRow(row: unknown): AdminUser | null {
+// Jedan red admin_list_users() ili admin_get_user() (dodatne kolone se ignorišu). Neispravan red daje null.
+export function parseAdminUserRow(row: unknown): AdminUser | null {
   if (typeof row !== 'object' || row === null || Array.isArray(row)) return null;
   const r = row as Record<string, unknown>;
 
@@ -50,14 +53,14 @@ function parseRow(row: unknown): AdminUser | null {
   if (typeof r.has_mfa !== 'boolean') return null;
   if (!validDate(r.created_at)) return null;
   if (!nullableDate(r.invited_at) || !nullableDate(r.email_confirmed_at)) return null;
-  if (!nullableDate(r.last_sign_in_at) || !nullableDate(r.banned_until)) return null;
+  if (!nullableDate(r.last_sign_in_at) || !nullableDate(r.banned_until) || !nullableDate(r.disabled_at)) return null;
 
-  const documentsCount = count(r.documents_count);
-  const chatsCount = count(r.chats_count);
-  const dailyMessages = count(r.daily_messages);
-  const dailyDocuments = count(r.daily_documents);
-  const dailyTokens = count(r.daily_tokens);
-  const monthlyTokens = count(r.monthly_tokens);
+  const documentsCount = parseCount(r.documents_count);
+  const chatsCount = parseCount(r.chats_count);
+  const dailyMessages = parseCount(r.daily_messages);
+  const dailyDocuments = parseCount(r.daily_documents);
+  const dailyTokens = parseCount(r.daily_tokens);
+  const monthlyTokens = parseCount(r.monthly_tokens);
   if (
     documentsCount === null ||
     chatsCount === null ||
@@ -79,6 +82,7 @@ function parseRow(row: unknown): AdminUser | null {
     emailConfirmedAt: r.email_confirmed_at,
     lastSignInAt: r.last_sign_in_at,
     bannedUntil: r.banned_until,
+    disabledAt: r.disabled_at,
     hasMfa: r.has_mfa,
     documentsCount,
     chatsCount,
@@ -95,15 +99,17 @@ export function parseAdminUsers(data: unknown): AdminUser[] | null {
   if (!Array.isArray(data)) return null;
   const users: AdminUser[] = [];
   for (const row of data) {
-    const user = parseRow(row);
+    const user = parseAdminUserRow(row);
     if (!user) return null;
     users.push(user);
   }
   return users;
 }
 
-// Blokada (ban) ima prednost; nalog koji nije potvrdio mejl još je „pozvan".
-export function userStatus(user: Pick<AdminUser, 'bannedUntil' | 'emailConfirmedAt'>, now: Date): UserStatus {
+// Blokada ima prednost: oznaka u profilu (disabled_at) ili ban u Auth-u koji još važi. Nalog koji nije potvrdio
+// mejl, a nije blokiran, još je „pozvan".
+export function userStatus(user: Pick<AdminUser, 'bannedUntil' | 'disabledAt' | 'emailConfirmedAt'>, now: Date): UserStatus {
+  if (user.disabledAt !== null) return 'blocked';
   if (user.bannedUntil !== null && Date.parse(user.bannedUntil) > now.getTime()) return 'blocked';
   return user.emailConfirmedAt === null ? 'invited' : 'active';
 }
@@ -158,6 +164,20 @@ export function summarizeOffice(users: AdminUser[], limits: Limits, now: Date): 
     };
   }
   return summary;
+}
+
+// Najopterećeniji limit advokata: procenat (preko 100% se ne skraćuje) i opis tog limita, za traku u tabeli.
+export function userUsage(user: AdminUser, limits: Limits): { percent: number; reason: string } {
+  const status = usageStatus(
+    {
+      daily_messages: user.dailyMessages,
+      daily_documents: user.dailyDocuments,
+      daily_tokens: user.dailyTokens,
+      monthly_tokens: user.monthlyTokens,
+    },
+    limits,
+  );
+  return { percent: status.maxPercent, reason: reasonText(status.topKey, user, limits, status.maxPercent) };
 }
 
 export type NearLimit = { id: string; name: string; percent: number; reason: string };

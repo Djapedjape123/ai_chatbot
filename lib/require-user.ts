@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { apiError } from '@/lib/api-error';
+import { ACCOUNT_BLOCKED_MESSAGE, ACCOUNT_CHECK_FAILED_MESSAGE, decideAccountAccess } from '@/lib/account-access';
 import { MFA_REQUIRED_MESSAGE, countVerifiedFactors, isMfaPending, readAal, type Aal } from '@/lib/mfa-gate';
 
 export type Assurance = { aal: Aal | null; verifiedFactors: number; pending: boolean };
@@ -21,6 +22,28 @@ export async function requireUser(options: { allowMfaPending?: boolean } = {}) {
       assurance: null,
       errorResponse: apiError('Niste prijavljeni ili je sesija istekla.', 401, 'unauthorized'),
     };
+  }
+
+  // Blokiran nalog (2.5.6): ban u Auth-u i/ili oznaka u profilu. Pristupni token izdat pre blokade važi do isteka,
+  // pa se blokada proverava pri svakom zahtevu. Greška čitanja profila ne propušta zahtev (zatvoreno pravilo).
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('disabled_at')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (profileError) console.error('Account Check Error:', profileError);
+
+  const access = decideAccountAccess({
+    bannedUntil: user.banned_until,
+    profile,
+    profileFailed: Boolean(profileError),
+    now: new Date(),
+  });
+  if (access === 'blocked') {
+    return { user: null, supabase: null, assurance: null, errorResponse: apiError(ACCOUNT_BLOCKED_MESSAGE, 403, 'account_blocked') };
+  }
+  if (access === 'check_failed') {
+    return { user: null, supabase: null, assurance: null, errorResponse: apiError(ACCOUNT_CHECK_FAILED_MESSAGE, 503, 'account_check_failed') };
   }
 
   // Dvostepena prijava (2.5.3): nalog sa potvrđenim faktorom ne koristi aplikaciju sa sesijom dobijenom samo lozinkom.

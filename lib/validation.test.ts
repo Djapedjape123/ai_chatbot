@@ -8,6 +8,7 @@ import {
   ingestFormInput,
   MAX_FILE_SIZE,
   inviteSchema,
+  inviteFormInput,
   roleSchema,
   settingsSchema,
   settingsFormInput,
@@ -186,4 +187,21 @@ test('settingsFormInput: čita polja iz FormData', () => {
   assert.equal(r.success, true);
   assert.equal(r.data?.dailyDocuments, 10);
   assert.equal(settingsSchema.safeParse(settingsFormInput(new FormData())).success, false);
+});
+
+test('inviteFormInput: čita email i ime iz FormData, a nedostajuće polje daje poruku o tom polju (ne opštu grešku)', () => {
+  const fd = new FormData();
+  fd.set('email', '  Ana@Kancelarija.RS ');
+  fd.set('fullName', ' Ana Anić ');
+  fd.set('nepoznato', 'x');
+  const ok = inviteSchema.safeParse(inviteFormInput(fd));
+  assert.equal(ok.success, true);
+  assert.equal(ok.data?.email, 'ana@kancelarija.rs');
+  assert.equal(ok.data?.fullName, 'Ana Anić');
+
+  const noName = new FormData();
+  noName.set('email', 'ana@kancelarija.rs');
+  const bad = inviteSchema.safeParse(inviteFormInput(noName));
+  assert.equal(bad.success, false);
+  assert.equal(bad.error?.issues[0].message, 'Unesite ime i prezime.');
 });
