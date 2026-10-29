@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ACTION_LABELS,
   ACTIVITY_ACTIONS,
+  ATTENTION_ACTIONS,
   MAX_PAGE,
   describeActivity,
   formatBelgrade,
@@ -182,6 +183,25 @@ test('describeActivity: izvoz dnevnika i uključena dvostepena prijava', () => {
   assert.deepEqual(describeActivity(row('mfa_enrolled'), titles), { label: 'Uključena dvostepena prijava', details: [] });
 });
 
+test('describeActivity: izvoz navodi period, filtere i skraćivanje', () => {
+  const d = describeActivity(
+    row('audit_exported', {
+      metadata: { rows: 50000, truncated: true, from: '2026-10-01', to: '2026-10-29', action: 'question_asked', user: DOC },
+    }),
+    titles,
+  );
+  assert.deepEqual(d.details, [
+    'Period: 01.10.2026. – 29.10.2026.',
+    'Vrsta: Postavljeno pitanje',
+    'Advokat: ID 3f2b8c1e',
+    'Izvezeno redova: 50000',
+    'Izvoz je skraćen: premašen je najveći dozvoljeni broj redova',
+  ]);
+  // metadata je podatak iz baze: sve što nije očekivanog oblika se preskače
+  const bad = describeActivity(row('audit_exported', { metadata: { rows: 5, from: 'x', to: 7, action: 'nepoznato', user: 5, truncated: 'da' } }), titles);
+  assert.deepEqual(bad.details, ['Izvezeno redova: 5']);
+});
+
 test('describeActivity: nepoznata akcija i neispravan metadata ne ruše prikaz', () => {
   assert.deepEqual(describeActivity(row('nova_akcija'), titles), { label: 'nova_akcija', details: [] });
   for (const metadata of [null, 'tekst', 42, [], [1, 2], { document_ids: 'nije niz', input_tokens: 'x', patterns: 5 }]) {
@@ -191,4 +211,9 @@ test('describeActivity: nepoznata akcija i neispravan metadata ne ruše prikaz',
       assert.ok(Array.isArray(d.details));
     }
   }
+});
+
+test('ATTENTION_ACTIONS: samo radnje koje traže pažnju admina (limit, blokirano otpremanje, sumnjiv sadržaj)', () => {
+  assert.deepEqual([...ATTENTION_ACTIONS].sort(), ['document_upload_blocked', 'limit_reached', 'suspicious_content_flagged']);
+  for (const a of ATTENTION_ACTIONS) assert.ok(ACTIVITY_ACTIONS.includes(a as (typeof ACTIVITY_ACTIONS)[number]), a);
 });

@@ -15,7 +15,9 @@ Za detalje i obrazloženja: `docs/admin-panel-plan.md` (plan) i `CLAUDE.md` (sta
 | 2.5.4 Pozivnica i postavljanje lozinke | Commit-ovan i na GitHub-u (`4316a87`); ruta i `proxy.ts` probani lokalno (29 provera); **na produkciji nije potvrđeno** (odeljak 2, „2.5.4") |
 | 2.5.5 Admin okvir i pregled | Kod napisan, `npm test` 231/231, probano lokalno (27 provera); commit-ovan (`01d79e5`); **vlasnik je 2026-10-29 ušao u `/admin` kao admin sa MFA na produkciji** (odeljak 2, „2.5.5"). U bazi je 1 admin |
 | 2.5.6 Advokati (tabela, pregled jednog, poziv, blokada, uloga) | Commit-ovan i push-ovan (`55cd533`), migracija primenjena i `phase256` test prošao na pravoj bazi (2026-10-29); **na produkciji nije probano** (nema traga u bazi) (odeljak 2, „2.5.6") |
-| 2.5.7 do 2.5.10 | Nije počelo |
+| 2.5.7 Aktivnost (`/admin/activity`) + CSV izvoz | Kod napisan i probano lokalno (129 provera na pravom `next start`, 334 testa, mutacije); **nije commit-ovano i nije na produkciji**; bez migracije (odeljak 2, „2.5.7") |
+| 2.5.8 Podešavanja (`/admin/settings`) | Isto kao 2.5.7, ide u istom commit-u (odeljak 2, „2.5.8") |
+| 2.5.9 i 2.5.10 | Nije počelo |
 | 2.5.11 (predlog) Tvrdi RLS: `aal2` + blokada na nivou baze + audit uklanjanja MFA | Čeka tvoju odluku (C6, C7, C8) |
 | 3. Bezbednost fajlova | Posle 2.5 |
 | 4. Isporuka kancelariji | Posle faze 3 |
@@ -147,12 +149,22 @@ Supabase-om. **Nije viđeno:** pravi Supabase sa pravim `aal2` tokenom, izgled u
    6. **Poziv** radi tek kad su urađeni B3, B4 i B8 (URL Configuration, SMTP, email šabloni): pozovi novu adresu sa forme; mejl stiže, link otvara „Postavite lozinku", posle čuvanja si u chatu, a nalog ima ulogu advokata. Ako mejl ne stiže ili forma javi grešku, pošalji tačnu poruku.
    7. Javi ishod; sledeći korak je 2.5.7.
 
-### 2.5.7 Aktivnost i CSV izvoz
-`app/admin/activity/page.tsx` (filteri advokat/akcija/period, najviše 90 dana, strane po 50), `auditFilterSchema` (beogradski datumi),
-`app/api/admin/audit/export/route.ts` (CSV iz `lib/csv.ts`, najviše 50.000 redova, upisuje `audit_exported` PRE slanja).
+### 2.5.7 Aktivnost i CSV izvoz — URAĐENO (nije commit-ovano), čeka tvoj test na produkciji
+Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.7". Ukratko: `/admin/activity` (filteri: advokat, vrsta, period u beogradskim datumima do 90 dana, podrazumevano 7 dana; 50 zapisa po strani, paginacija po kursoru `(created_at, id)`: „Starije →" i „← Na početak") i `GET /api/admin/audit/export` (CSV, razdvajač `;`, UTF-8 sa BOM-om, najviše 50.000 najnovijih redova, strim, `audit_exported` se upisuje PRE slanja i ako upis ne uspe izvoz se ne šalje). **Bez migracije:** baza već ima sve (provereno preko MCP-a). Lokalno: `npm test` 334/334, proba na pravom `next start` sa lažnim Supabase-om (129 provera za 2.5.7 i 2.5.8 zajedno), namerne greške. **Nije viđeno:** pravi Supabase REST (naročito `or=(…)` filter sa vremenima pod navodnicima i `max_rows`), Vercel, izgled u browseru, otvaranje CSV-a u Excel-u.
 
-### 2.5.8 Podešavanja kancelarije
-`app/admin/settings/page.tsx`: četiri limita, uz trenutnu vrednost i gornju granicu iz env-a; snimanje preko `admin_update_settings`.
+### 2.5.8 Podešavanja kancelarije — URAĐENO (nije commit-ovano), čeka tvoj test na produkciji
+Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.8". Ukratko: `/admin/settings` (četiri limita sa vrednošću iz baze, gornjom granicom iz env-a i napomenom kad granica skraćuje vrednost) i akcija `updateSettings` preko `admin_update_settings` (audit `settings_changed` upisuje baza; iste vrednosti se ne snimaju). Promena važi odmah. Bez migracije.
+
+**Tvoj deo za 2.5.7 i 2.5.8 (redom):**
+1. **Nema SQL-a ni migracije pre push-a.** Commit i push (predlog poruke: `faza 2.5.7 i 2.5.8 aktivnost i podesavanja`). `main` je produkcija. Novo su samo `/admin/activity`, `/admin/settings` i `/api/admin/audit/export`; od postojećeg je dirnuto samo: boja zapisa u `/activity` (ista), `lib/csv.ts` i `lib/audit.ts` (isto ponašanje, uz novu funkciju).
+2. Kad je Production „Ready":
+   1. **Pošalji jednu poruku u chat** (odeljak 1A, tačka 1) i javi Claude-u da proveri novi red u `usage_ledger`. U bazi još nema reda posle 2026-10-28 14:57, a od tada su se promenile `/api/chat` (2.5.2), `requireUser` (2.5.3, 2.5.6) i čitanje podešavanja (2.5.2).
+   2. `/admin` → **Aktivnost**: vidiš svoje zapise (u bazi ih je 8, sa tvojim MFA zapisom), vreme je beogradsko. Probaj filter „Vrsta aktivnosti", filter „Advokat" i izbor jednog dana. Unesi period duži od 90 dana (datum ručno): poruka na stranici, bez greške.
+   3. **„Preuzmi CSV"**: preuzima se `aktivnost_<od>_<do>.csv`. Otvori ga dvoklikom u Excel-u: slova č, ć, š, ž, đ moraju biti ispravna i podaci razdvojeni u 11 kolona. **Ako je sve u jednoj koloni, javi** (znači da je potreban zarez umesto `;`, odluka C1, jedna konstanta).
+   4. Vrati se na **Aktivnost**: na vrhu mora biti novi zapis „Izvezen dnevnik aktivnosti" sa periodom i brojem redova. SQL: `select action, metadata, created_at from public.audit_log where action = 'audit_exported' order by created_at desc limit 3;`
+   5. **Podešavanja**: vidiš 100 / 20 / 1.000.000 / 20.000.000. Ako su na Vercel-u postavljene env granice (`DAILY_MESSAGE_LIMIT` i ostale) ispod tih vrednosti, piše „Važi gornja granica ugovora: X" (javi koje vrednosti vidiš, da ih upišem u dokument). Promeni dnevni limit poruka na **2** i sačuvaj („Podešavanja su sačuvana"), pa pošalji 3 poruke u chat: treća mora da vrati poruku o dnevnom limitu (429). **Vrati na 100.** SQL: `select action, metadata, created_at from public.audit_log where action = 'settings_changed' order by created_at desc limit 3;` mora da pokaže staro i novo.
+   6. **Kao advokat** (drugi nalog, običan prozor ili incognito) otvori `/admin/activity` i `/admin/settings`: oba daju 404, kao i `/api/admin/audit/export`.
+   7. Javi ishod. **Paginacija na produkciji ne može da se isproba:** strana ima 50 zapisa, a u bazi ih je 8; proveri je kad se nakupi, ili preskoči (proba je pokriva sa 120 zapisa, uključujući zapise sa istim vremenom).
 
 ### 2.5.9 Ulaz u panel
 `Sidebar.tsx` dobija prop `isAdmin` (link „Admin panel") i link „Bezbednost naloga" za sve; `GET /api/me` (`{ role }`) za `app/chat/page.tsx`.
@@ -178,43 +190,48 @@ Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/bu
 Kopiraj ceo blok ispod. Nema šta da se popunjava (jedino opciona linija „Dopuna od mene"); sve što ne piše kao urađeno Claude smatra neurađenim i proverava u bazi. Svaki čet na kraju zamenjuje ovaj odeljak novim promptom.
 
 ```
-Pročitaj redom: CLAUDE.md, docs/next-steps.md, docs/admin-panel-plan.md (naročito „Rezultat 2.5.6" i korake 2.5.7 do 2.5.10) i memoriju (local-verification-recipe). Odgovaraj na srpskom.
+Pročitaj redom: CLAUDE.md, docs/next-steps.md, docs/admin-panel-plan.md (naročito „Rezultat 2.5.7", „Rezultat 2.5.8" i korake 2.5.9 do 2.5.10), tools/verify/README.md i memoriju (local-verification-recipe). Odgovaraj na srpskom.
 
 STANJE (29.10.2026.)
-- Faze 1 i 2 su zatvorene. Faza 2.5 (admin panel): urađeni su 2.5.1 do 2.5.6. Poslednji commit je 55cd533 („faza 2.5.6 advokati"), push-ovan. Migracija 20261029100000 je primenjena na Supabase-u (phase256 test je prošao na pravoj bazi, Advisors bez novih upozorenja).
-- Potvrđeno na produkciji: 2.5.3 (MFA) i 2.5.5 (/admin pregled). NIJE probano: 2.5.4 (pozivnica i postavljanje lozinke) i 2.5.6 (advokati, blokada).
-- Ostaje: 2.5.7 Aktivnost + CSV izvoz, 2.5.8 Podešavanja, 2.5.9 Ulaz u panel, 2.5.10 Završna provera. Zatim (predlog) 2.5.11 tvrdi RLS, pa Faza 3 (bezbednost fajlova) i Faza 4 (isporuka kancelariji).
+- Faze 1 i 2 su zatvorene. Faza 2.5 (admin panel): urađeni su 2.5.1 do 2.5.8. 2.5.1 do 2.5.6 su commit-ovani i push-ovani (poslednji kod: 55cd533, poslednja dokumenta: e322d23). 2.5.7 (Aktivnost + CSV izvoz) i 2.5.8 (Podešavanja) su napisani i probani lokalno u prethodnom ćaskanju (334 testa, 129 provera na pravom next start sa lažnim Supabase-om, mutacije), BEZ migracije. Da li su commit-ovani i na produkciji NE znam: proveri git status i git log, a u bazi audit_exported i settings_changed.
+- Alati za proveru su sačuvani u tools/verify/ (README.md): lažni Supabase, proba na pravom next start, pozivanje server akcija, runner za mutacije. Koristi ih i proširuj (nova proba po koraku), ne piši iznova.
+- Potvrđeno na produkciji do sada: 2.5.3 (MFA) i 2.5.5 (/admin pregled). NIJE probano: 2.5.4 (pozivnica), 2.5.6 (advokati, blokada), 2.5.7 i 2.5.8 (vidi „Tvoj deo" u next-steps.md).
+- Ostaje: 2.5.9 Ulaz u panel, 2.5.10 Završna provera. Zatim 2.5.11 (tvrdi RLS: aal2 i blokada u bazi, audit uklanjanja MFA), pa Faza 3 (bezbednost fajlova) i Faza 4 (isporuka kancelariji).
 
 KORAK 0, pre ikakvog koda (veruj bazi, ne meni): preko Supabase MCP-a (read-only) pokreni
   select (select max(created_at) from public.usage_ledger) as poslednji_chat_red,
+         (select count(*) from public.audit_log) as audit_ukupno,
+         (select count(*) from public.audit_log where action = 'audit_exported') as izvozi,
+         (select count(*) from public.audit_log where action = 'settings_changed') as promene_podesavanja,
          (select count(*) from public.audit_log where action = 'admin_viewed_user') as pregledi_naloga,
          (select count(*) from public.audit_log where action in ('user_disabled', 'user_enabled')) as blokade,
          (select count(*) from public.audit_log where action = 'user_invited') as pozivi,
          (select count(*) from public.profiles where disabled_at is not null) as blokirani,
+         (select to_jsonb(s) - 'updated_by' from public.office_settings s) as podesavanja,
          (select max(last_sign_in_at) from auth.users) as poslednja_prijava;
 i javi mi u par redova šta je potvrđeno, a šta nije.
-- Ako je poslednji_chat_red stariji od 2026-10-28 14:57, chat posle izmena 2.5.2, 2.5.3 i 2.5.6 nije potvrđen: reci mi da pošaljem jednu poruku, pa proveri novi red. Ako chat vrati grešku (403 ili 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
-- Ono što ne vidiš iz baze (izgled u browseru, stiže li mejl) pitaj me. Sve što ovde ne piše kao urađeno smatraj neurađenim, uključujući Dashboard stavke B2 do B9 iz next-steps.md.
+- Ako je poslednji_chat_red stariji od 2026-10-28 14:57, chat posle izmena 2.5.2, 2.5.3 i 2.5.6 NIJE potvrđen (u prethodnom ćaskanju nije bio): reci mi da pošaljem jednu poruku, pa proveri novi red. Ako chat vrati grešku (403 ili 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
+- Ono što ne vidiš iz baze (izgled u browseru, stiže li mejl, Excel) pitaj me. Sve što ovde ne piše kao urađeno smatraj neurađenim, uključujući Dashboard stavke B2 do B9 iz next-steps.md.
 - Dopuna od mene (opciono): ____
 
-ZADATAK OVOG ČETA: 2.5.7, pa 2.5.8 ako stane (2.5.9 i 2.5.10 idu u sledeći čet). Pazi na ovo:
-- 2.5.7: auditFilterSchema (advokat, akcija, period do 90 dana) radi sa BEOGRADSKIM datumima. Pretvaranje u UTC mora da preživi promenu sata (29.3. i 25.10.2026.): test-prvo sa ručno izvedenim literalima. Stranica čita audit_log preko korisničkog klijenta (RLS + aal2), keyset paginacija po (created_at, id), 50 po strani, opisi iz lib/activity.ts.
-- 2.5.7 izvoz je GET ruta: requireAdmin + mfa === 'ok', zod za filtere, lib/csv.ts (delimiter ';', zaštita od CSV injection), UTF-8 sa BOM-om, audit_exported se upisuje PRE slanja, najviše 50.000 redova. Supabase vraća najviše 1000 redova po upitu (max_rows, proveri), a Vercel odbija ne-streaming odgovor veći od oko 4,5 MB (proveri u dokumentaciji), pa izvoz mora da ide u petlji po stranicama i da se strimuje.
-- 2.5.8: forma za 4 limita (settingsSchema postoji), prikaz trenutne vrednosti i env gornje granice, snimanje preko RPC-a admin_update_settings; promena važi odmah.
+ZADATAK OVOG ČETA: 2.5.9, pa 2.5.10, pa samo PRVO PITANJE za 2.5.11 (migraciju ne piši bez mog odgovora). Pazi na ovo:
+- 2.5.9: Sidebar.tsx dobija prop isAdmin (link „Admin panel") i link „Bezbednost naloga" (/account/security) za sve; GET /api/me ({ role }, requireUser, čitanje preko RLS-a) za app/chat/page.tsx (klijentska komponenta). Link samo olakšava ulaz, zaštita je u panelu (404 za advokata). /api/me ne sme da vrati ništa osim uloge. Sidebar.tsx ima 2 stara lint upozorenja (router, window.location.href): ne diraj ih usput. U probi pokaži da advokat u HTML-u ne vidi link ni reč „Admin panel".
+- 2.5.10: osam ručnih E2E tačaka iz plana (označi koje su već proverene u ranijim koracima, a koje NISU), Advisors Security (očekuje se 5 admin_* upozorenja + 2 stara), sva četiri SQL testa na pravoj bazi (phase1, phase2, phase25, phase256) i tsc/lint/build/test/audit. Faza 2.5 postaje [x] u CLAUDE.md TEK kad ja potvrdim ručne tačke; do tada ostaje [ ] sa spiskom šta fali.
+- 2.5.11 (samo pitanje i kratak plan): „Da li MFA postaje obavezan i za advokate?" i plan migracije (restriktivne polise na documents, document_chunks, chats, messages, usage_ledger, audit_log, profiles: aal2 za naloge sa potvrđenim faktorom + nalog nije blokiran; audit za uklanjanje MFA faktora). To menja RLS iz Faze 1, pa traži moje odobrenje i PGlite harness (dodaj ga u tools/verify/ po receptu iz memorije).
+- Svaki korak sa stranicama: probu napiši test-prvo (proširi tools/verify/probe-*.mjs ili napravi novu), vidi je kako pada, pa kod; posle toga namerne greške (tools/verify/lib/mutate.mjs). Ne pokreći mutacije, build ni npm test dok menjaš iste fajlove.
 
 MOJE ODLUKE (važe osim ako ispod dopišem drugačije)
-- C1 do C5 kako su predložene u next-steps.md (CSV ';', mesečni budžet ≥ dnevni, ime bez < i >, MFA kapija za naloge sa uključenim MFA, izgubljen telefon = ja uklanjam faktor u Dashboard-u).
-- C6, C7, C8 (aal2 i blokada na nivou baze, audit uklanjanja MFA): opcija (b), jedna migracija „2.5.11" posle 2.5.10 a pre Faze 3. Na početku 2.5.11 pitaj me da li MFA postaje obavezan i za advokate.
-- Alate za proveru (proba na pravom next start sa lažnim Supabase-om, kasnije i PGlite harness) sačuvaj u repo u tools/verify/ sa sopstvenim package.json i kratkim README-om, tako da npm run lint, tsc i next build ostanu čisti. Prvo mi u dve rečenice reci šta dodaješ.
+- C1 do C5 kako su predložene u next-steps.md (CSV ';', mesečni budžet ≥ dnevni, ime bez < i >, MFA kapija za naloge sa uključenim MFA, izgubljen telefon = ja uklanjam faktor u Dashboard-u). Ako CSV u Excel-u ispadne u jednoj koloni, javiću: tada se menja CSV_DELIMITER.
+- C6, C7, C8 (aal2 i blokada na nivou baze, audit uklanjanja MFA): opcija (b), jedna migracija „2.5.11" posle 2.5.10 a pre Faze 3.
 
 PRAVILA (uvek)
 - Test-prvo (superpowers:test-driven-development): vidi test kako pada iz pravog razloga, pa piši kod; posle toga namerne greške (mutacije) u novom kodu.
 - Samo main, bez novih grana i BEZ commit-a (commit i push radim ja).
-- Svaka stranica u app/admin zove requireAdminPage(next), svaka server akcija requireAdminAction(), svaka admin ruta requireAdmin() i proverava mfa === 'ok'. Stranice u app/admin NEMAJU metadata (naslov taba otkriva panel). Čitanja idu preko korisničkog klijenta, supabaseAdmin samo za upise i Auth Admin API (trajna pravila 1 do 7 u CLAUDE.md).
+- Svaka stranica u app/admin zove requireAdminPage(next), svaka server akcija requireAdminAction(), svaka admin ruta requireAdmin() i proverava mfa === 'ok' (lib/admin-guards.test.ts to proverava). Stranice u app/admin NEMAJU metadata (naslov taba otkriva panel). Čitanja idu preko korisničkog klijenta, supabaseAdmin samo za upise i Auth Admin API (trajna pravila 1 do 7 u CLAUDE.md).
 - Migracija: fajl u supabase/migrations + SQL test; ja je primenjujem PRE push-a (kod zavisi od nje); posle toga 4 SQL testa i Advisors. RLS tabela iz Faze 1 ne diraj bez mog odobrenja.
 - Pre pisanja Next koda pročitaj relevantne strane u node_modules/next/dist/docs/ (AGENTS.md).
-- Pre izveštaja: npm test, tsc, lint, next build (sa NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321), npm audit --omit=dev i proba na pravom next start. Izveštaj pošten: „viđeno" odvojeno od „nije proveravano".
-- Velike fajlove piši alatom Write, ne bash heredoc-om (dugačka komanda se seče).
+- Pre izveštaja: npm test, tsc, lint, next build (sa NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 i NEXT_PUBLIC_SUPABASE_ANON_KEY=fake-anon-key), npm audit --omit=dev i proba iz tools/verify na pravom next start. Izveštaj pošten: „viđeno" odvojeno od „nije proveravano".
+- Fajlove piši alatima Write i Edit, ne bash heredoc-om ni node -e sa šablonskim stringovima (shell kvari ${} i obrnute kose crte; dugačka komanda se seče).
 
 KRAJ ČETA: upiši rezultat u docs/admin-panel-plan.md, CLAUDE.md i docs/next-steps.md; napiši „Tvoj deo" (SQL, Dashboard, ručni testovi); u docs/next-steps.md zameni odeljak 5 novim promptom za sledeći čet.
 ```

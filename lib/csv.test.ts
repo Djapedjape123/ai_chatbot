@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { csvCell, toCsv, CSV_DELIMITER } from './csv.ts';
+import { csvCell, csvLine, toCsv, CSV_BOM, CSV_DELIMITER } from './csv.ts';
 
 test('csvCell: običan tekst, brojevi i logičke vrednosti ostaju netaknuti', () => {
   assert.equal(csvCell('Zakon o radu'), 'Zakon o radu');
@@ -57,4 +57,16 @@ test('toCsv: BOM za Excel, zaglavlje, CRLF i završni prelom reda', () => {
 
 test('toCsv: zaglavlje se tretira kao i ostale ćelije, a prazna tabela ima samo zaglavlje', () => {
   assert.equal(toCsv(['A;B', '=x'], []), '﻿"A;B";\'=x\r\n');
+});
+
+test('csvLine: jedan red za strimovani izvoz, bez BOM-a, sa CRLF na kraju i istom zaštitom kao toCsv', () => {
+  assert.equal(csvLine(['Ana', '=1+1', 7, null]), "Ana;'=1+1;7;\r\n");
+  assert.equal(csvLine(['a;b']), '"a;b"\r\n');
+});
+
+test('CSV_BOM: UTF-8 BOM (U+FEFF) i toCsv je sastavlja od istih delova kao strim', () => {
+  assert.equal(CSV_BOM, '﻿');
+  const header = ['Ime', 'Akcija'];
+  const rows = [['Ana', '=1+1'], ['Čedomir', 'ok']];
+  assert.equal(toCsv(header, rows), CSV_BOM + [header, ...rows].map(csvLine).join(''));
 });

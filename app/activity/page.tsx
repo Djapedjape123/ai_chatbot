@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/require-user';
 import {
   ACTION_LABELS,
   ACTIVITY_ACTIONS,
+  ATTENTION_ACTIONS,
   PAGE_SIZE,
   describeActivity,
   formatBelgrade,
@@ -16,9 +17,6 @@ import type { AuditAction } from '@/lib/audit';
 export const metadata: Metadata = { title: 'Aktivnost | Pravni Asistent' };
 
 const COLUMNS = 'id, user_id, actor_email, action, resource_type, resource_id, metadata, ip, created_at';
-
-// Zapisi koji traže pažnju admina (limit, blokiran ili sumnjiv fajl)
-const ATTENTION = new Set<string>(['limit_reached', 'document_upload_blocked', 'suspicious_content_flagged']);
 
 function activityHref(page: number, action: AuditAction | null) {
   const params = new URLSearchParams();
@@ -120,7 +118,7 @@ export default async function ActivityPage({
               return (
                 <li key={row.id} className="p-4 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                   <div className="min-w-0">
-                    <p className={`text-sm font-medium ${ATTENTION.has(row.action) ? 'text-amber-700' : 'text-[#16263D]'}`}>{label}</p>
+                    <p className={`text-sm font-medium ${ATTENTION_ACTIONS.has(row.action) ? 'text-amber-700' : 'text-[#16263D]'}`}>{label}</p>
                     {details.map((line) => (
                       <p key={line} className="text-xs text-[#16263D]/60 break-words">
                         {line}

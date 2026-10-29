@@ -6,8 +6,18 @@ import { requireAdminAction, type AdminContext } from '@/lib/admin-action';
 import { supabaseAdmin } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
-import { inviteFormInput, inviteSchema, roleSchema, uuidSchema } from '@/lib/validation';
+import { inviteFormInput, inviteSchema, roleSchema, settingsFormInput, settingsSchema, uuidSchema } from '@/lib/validation';
 import { parseAdminUsers, userStatus } from '@/lib/admin-overview';
+import { parseOfficeSettings } from '@/lib/limits';
+import {
+  OFFICE_SETTINGS_COLUMNS,
+  SETTINGS_FIELDS,
+  describeSettingsRpcError,
+  settingsRpcArgs,
+  settingsUnchanged,
+  type SettingsState,
+  type SettingsValues,
+} from '@/lib/office-settings';
 import {
   checkInviteQuota,
   describeAdminRpcError,
@@ -194,4 +204,39 @@ export async function setRole(userId: string, role: string): Promise<ActionResul
     success: true,
     message: parsedRole.data === 'admin' ? 'Nalog je postavljen za admina.' : 'Nalog je vraćen na ulogu advokata.',
   };
+}
+
+// Podešavanja kancelarije (2.5.8): četiri limita po advokatu. Promena važi odmah, jer lib/usage.ts čita
+// office_settings pri svakoj rezervaciji; env varijable su gornja granica koju admin ne može da pređe.
+// Upis i audit zapis settings_changed (staro i novo) rade zajedno u funkciji admin_update_settings (jedna transakcija,
+// proverava admina + aal2), pa se zapis ne može zaobići direktnim pozivom.
+export async function updateSettings(_previous: SettingsState, formData: FormData): Promise<SettingsState> {
+  const raw = settingsFormInput(formData);
+  // Uneto se vraća u formu pri grešci, da admin ne kuca ponovo
+  const values = Object.fromEntries(SETTINGS_FIELDS.map(({ key }) => [key, typeof raw[key] === 'string' ? raw[key] : ''])) as SettingsValues;
+
+  const auth = await requireAdminAction();
+  if ('error' in auth) return { status: 'error', error: auth.error, values };
+
+  const parsed = settingsSchema.safeParse(raw);
+  if (!parsed.success) return { status: 'error', error: parsed.error.issues[0]?.message ?? INVALID_REQUEST, values };
+
+  // Isti vrednosti ne bi promenile ništa, a pravile bi lažan zapis "Promenjena podešavanja" u dnevniku
+  const { data, error: readError } = await auth.admin.supabase.from('office_settings').select(OFFICE_SETTINGS_COLUMNS).maybeSingle();
+  const current = parseOfficeSettings(data);
+  if (readError || !current) {
+    console.error('Settings Read Error:', readError?.code);
+    return { status: 'error', error: 'Trenutna podešavanja se ne mogu pročitati. Pokušajte ponovo.', values };
+  }
+  if (settingsUnchanged(current, parsed.data)) return { status: 'success', message: 'Nema promena.' };
+
+  const { error } = await auth.admin.supabase.rpc('admin_update_settings', settingsRpcArgs(parsed.data));
+  if (error) {
+    console.error('Update Settings Error:', error.code);
+    return { status: 'error', error: describeSettingsRpcError(error), values };
+  }
+
+  revalidatePath('/admin/settings');
+  revalidatePath('/admin');
+  return { status: 'success', message: 'Podešavanja su sačuvana. Važe odmah, od sledećeg zahteva.' };
 }

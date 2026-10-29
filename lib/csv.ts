@@ -5,7 +5,7 @@
 export const CSV_DELIMITER = ';';
 
 // UTF-8 BOM da Excel ispravno prikaže č, ć, š, ž, đ
-const BOM = '﻿';
+export const CSV_BOM = '﻿';
 
 export type CsvValue = string | number | boolean | Date | null | undefined;
 
@@ -23,7 +23,11 @@ export function csvCell(value: CsvValue): string {
   return /[";,\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+// Jedan red sa završnim CRLF. Strimovani izvoz šalje red po red, a toCsv ga sastavlja od istih delova.
+export function csvLine(cells: CsvValue[]): string {
+  return `${cells.map(csvCell).join(CSV_DELIMITER)}\r\n`;
+}
+
 export function toCsv(header: string[], rows: CsvValue[][]): string {
-  const lines = [header, ...rows].map((cells) => cells.map(csvCell).join(CSV_DELIMITER));
-  return `${BOM}${lines.join('\r\n')}\r\n`;
+  return CSV_BOM + [header, ...rows].map(csvLine).join('');
 }

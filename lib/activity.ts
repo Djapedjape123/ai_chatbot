@@ -39,6 +39,13 @@ const SETTING_LABELS: [key: string, label: string][] = [
 
 export const ACTIVITY_ACTIONS = Object.keys(ACTION_LABELS) as AuditAction[];
 
+// Zapisi koji traže pažnju admina (limit, blokirano otpremanje ili sumnjiv fajl); stranice ih boje drugačije
+export const ATTENTION_ACTIONS: ReadonlySet<string> = new Set<AuditAction>([
+  'limit_reached',
+  'document_upload_blocked',
+  'suspicious_content_flagged',
+]);
+
 export type ActivityRow = {
   id: string;
   user_id: string | null;
@@ -85,6 +92,11 @@ export type ActivityDescription = { label: string; details: string[] };
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const count = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
 const shortId = (id: string) => `ID ${id.slice(0, 8)}`;
+// 'GGGG-MM-DD' (beogradski datum iz metadata) -> 'DD.MM.GGGG.'; sve drugo je null
+const isoDay = (v: unknown): string | null => {
+  const m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  return m ? `${m[3]}.${m[2]}.${m[1]}.` : null;
+};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -206,8 +218,16 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
       break;
     }
     case 'audit_exported': {
+      const from = isoDay(meta.from);
+      const to = isoDay(meta.to);
+      if (from && to) details.push(`Period: ${from} – ${to}`);
+      if (typeof meta.action === 'string' && Object.hasOwn(ACTION_LABELS, meta.action)) {
+        details.push(`Vrsta: ${ACTION_LABELS[meta.action as AuditAction]}`);
+      }
+      if (typeof meta.user === 'string' && meta.user.length > 0) details.push(`Advokat: ${shortId(meta.user)}`);
       const rows = count(meta.rows);
       if (rows !== null) details.push(`Izvezeno redova: ${rows}`);
+      if (meta.truncated === true) details.push('Izvoz je skraćen: premašen je najveći dozvoljeni broj redova');
       break;
     }
     case 'mfa_enrolled':

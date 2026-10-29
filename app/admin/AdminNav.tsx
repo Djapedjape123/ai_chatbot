@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Stranice panela. Nove (Aktivnost, Podešavanja) se dodaju ovde kad budu napravljene (2.5.7 i 2.5.8),
-// da navigacija nikad ne vodi na stranicu koja ne postoji.
+// Stranice panela. Nova stranica se dodaje ovde tek kad postoji, da navigacija nikad ne vodi na 404.
 const ITEMS = [
   { href: '/admin', label: 'Pregled' },
   { href: '/admin/users', label: 'Advokati' },
+  { href: '/admin/activity', label: 'Aktivnost' },
+  { href: '/admin/settings', label: 'Podešavanja' },
 ];
 
 // Klijentska komponenta jer layout ne vidi trenutnu putanju (ne izvršava se ponovo pri navigaciji).

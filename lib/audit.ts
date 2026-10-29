@@ -37,7 +37,9 @@ type AuditOptions = {
   ip?: string | null;
 };
 
-export async function logAudit(actor: AuditActor, action: AuditAction, options: AuditOptions = {}): Promise<void> {
+// Upisuje zapis i javlja da li je upisan. Za radnje koje se ne smeju izvršiti bez traga (CSV izvoz, 2.5.7):
+// pozivalac pri neuspehu odbija radnju. Greška se nikad ne baca.
+export async function writeAudit(actor: AuditActor, action: AuditAction, options: AuditOptions = {}): Promise<boolean> {
   try {
     const { error } = await supabaseAdmin.from('audit_log').insert({
       user_id: actor.id,
@@ -48,8 +50,18 @@ export async function logAudit(actor: AuditActor, action: AuditAction, options: 
       metadata: options.metadata ?? {},
       ip: options.ip ?? null,
     });
-    if (error) console.error('Audit Log Error:', action, error);
+    if (error) {
+      console.error('Audit Log Error:', action, error);
+      return false;
+    }
+    return true;
   } catch (error) {
     console.error('Audit Log Exception:', action, error);
+    return false;
   }
+}
+
+// Za sve ostale radnje zapis je prateći: neuspeh upisa ne ruši zahtev
+export async function logAudit(actor: AuditActor, action: AuditAction, options: AuditOptions = {}): Promise<void> {
+  await writeAudit(actor, action, options);
 }

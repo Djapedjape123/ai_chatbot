@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Alati za proveru (tools/verify) nisu deo aplikacije i imaju sopstveni package.json
+    "tools/**",
   ]),
 ]);
 

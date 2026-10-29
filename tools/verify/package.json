@@ -1,0 +1,12 @@
+{
+  "name": "ai-chatbot-verify",
+  "private": true,
+  "type": "module",
+  "description": "Alati za proveru (nisu deo aplikacije): proba na pravom `next start` sa lažnim Supabase-om. Bez zavisnosti, samo Node 22.",
+  "scripts": {
+    "probe:admin-activity": "node probe-admin-activity.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
