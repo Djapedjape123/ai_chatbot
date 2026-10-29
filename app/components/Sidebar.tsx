@@ -15,6 +15,8 @@ interface SidebarProps {
   onDeleteChat: (id: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
+  // Veza "Admin panel" samo olakšava ulaz; zaštita je u samom panelu (404 za advokata), pa ovo nije bezbednosna odluka
+  isAdmin?: boolean;
 }
 
 export default function Sidebar({
@@ -25,7 +27,8 @@ export default function Sidebar({
   onOpenPdfModal,
   onDeleteChat,
   isOpen = false,
-  onClose
+  onClose,
+  isAdmin = false
 }: SidebarProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -82,12 +85,31 @@ export default function Sidebar({
       <Link
         href="/activity"
         onClick={onClose}
-        className="mb-6 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
+        className="mb-3 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
       >
         🕘 Aktivnost
       </Link>
 
-      <div className="text-xs text-[#F7F3EC]/50 uppercase tracking-wider mb-2 px-1">Istorija</div>
+      <Link
+        href="/account/security"
+        onClick={onClose}
+        className="mb-3 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
+      >
+        🔐 Bezbednost naloga
+      </Link>
+
+      {isAdmin && (
+        <Link
+          href="/admin"
+          prefetch={false}
+          onClick={onClose}
+          className="mb-3 rounded-md border border-dashed border-[#F7F3EC]/30 px-3 py-2.5 text-sm hover:bg-[#F7F3EC]/10 transition flex items-center justify-center gap-2 text-center"
+        >
+          🛡️ Admin panel
+        </Link>
+      )}
+
+      <div className="text-xs text-[#F7F3EC]/50 uppercase tracking-wider mt-3 mb-2 px-1">Istorija</div>
       
       <div className="flex-1 overflow-y-auto space-y-1.5 -mx-2 px-2">
         {chats.map((chat) => (

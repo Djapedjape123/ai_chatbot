@@ -148,7 +148,7 @@ function pickColumns(row, select, allowed) {
 
 export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
   const state = {
-    users: new Map(), // id -> { id, email, role, factors, disabled_at, banned_until }
+    users: new Map(), // id -> { id, email, role, factors, disabled_at, banned_until, noProfile? }
     settings: null,
     auditRows: [], // { id, user_id, actor_email, action, resource_type, resource_id, metadata, ip, created_at }
     requests: [],
@@ -312,8 +312,11 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
 
     if (table === 'profiles') {
       if (c.kind === 'anon') throw new PostgrestError(401, '42501', 'permission denied for table profiles');
+      const f = failure('select_profiles');
+      if (f) throw new PostgrestError(f.status ?? 500, f.code ?? 'XX000', f.message ?? 'select failed');
       const idFilter = /^eq\.(.+)$/.exec(url.searchParams.get('id') ?? '');
-      const found = [...state.users.values()].filter((u) => (!idFilter || u.id === idFilter[1]) && (c.kind === 'service' || u.id === c.sub));
+      // noProfile: stariji nalog koji postoji u Auth-u, a nema red u profiles
+      const found = [...state.users.values()].filter((u) => !u.noProfile && (!idFilter || u.id === idFilter[1]) && (c.kind === 'service' || u.id === c.sub));
       const rows = found.map((u) => pickColumns(u, url.searchParams.get('select'), ['id', 'role', 'disabled_at', 'email']));
       return sendRows(rows, { total: rows.length });
     }
@@ -324,8 +327,8 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
       return sendRows([row], { total: 1 });
     }
 
-    if (table === 'documents') {
-      if (c.kind === 'anon') throw new PostgrestError(401, '42501', 'permission denied for table documents');
+    if (table === 'documents' || table === 'chats') {
+      if (c.kind === 'anon') throw new PostgrestError(401, '42501', `permission denied for table ${table}`);
       return sendRows([], { total: 0 });
     }
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PdfUploader from '@/app/components/PdfUploader';
 import Sidebar from '@/app/components/Sidebar';
+import { readIsAdmin } from '@/lib/me';
 import { exportSingleMessageToWord, exportFullChatToWord } from '@/lib/exportWord';
 import * as mammoth from 'mammoth';
 
@@ -35,7 +36,9 @@ export default function Home() {
   const [usageWarning, setUsageWarning] = useState<string | null>(null);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+  // Veza "Admin panel" u meniju (2.5.9). Uloga stiže iz /api/me; greška ili neočekivan odgovor znače "nije admin".
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFileText, setAttachedFileText] = useState<string | null>(null);
   
@@ -62,6 +65,21 @@ export default function Home() {
       })
       .catch(() => {
         if (!cancelled) showToast('Greška pri učitavanju razgovora.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setIsAdmin(readIsAdmin(data));
+      })
+      .catch(() => {
+        // meni radi i bez veze ka panelu, pa greška ne prikazuje poruku
       });
     return () => {
       cancelled = true;
@@ -266,6 +284,7 @@ export default function Home() {
         onDeleteChat={deleteChat}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isAdmin={isAdmin}
       />
 
       {/* GLAVNI CHAT DEO */}
