@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+# alati za proveru imaju sopstvene zavisnosti (PGlite), vidi tools/verify/README.md
+/tools/verify/node_modules
 /.pnp
 .pnp.*
 .yarn/*

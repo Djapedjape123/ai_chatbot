@@ -1,6 +1,6 @@
 # tools/verify: alati za proveru
 
-Ovo NIJE deo aplikacije. Folder ima sopstveni `package.json` bez zavisnosti (samo Node 22) i nije u `tsconfig.json` ni u ESLint opsegu (`eslint.config.mjs` ga preskače), pa `npm run lint`, `tsc` i `next build` ne vide ništa odavde.
+Ovo NIJE deo aplikacije. Folder ima sopstveni `package.json` (Node 22; probe za aplikaciju nemaju zavisnosti, a SQL harness ima dve: `@electric-sql/pglite` i `@electric-sql/pglite-pgvector`, instalirane samo ovde, `npm install` u ovom folderu, `node_modules` je u `.gitignore`) i nije u `tsconfig.json` ni u ESLint opsegu (`eslint.config.mjs` ga preskače), pa `npm run lint`, `tsc` i `next build` ne vide ništa odavde.
 
 Zašto postoji: u repou nema lokalnog Supabase-a, a MCP je read-only. Svaki korak Faze 2.5 se zato proverava probom na **pravom `next start`** koji govori sa **lažnim Supabase-om** (Auth, REST i RPC). Ranije se ta skripta pravila iznova pri svakom koraku; sada se čuva.
 
@@ -36,6 +36,10 @@ Ne dokazuje: da pravi Supabase odgovara isto. Lažni server je namerno strog gde
 | `probe-admin-activity.mjs` | Proba 2.5.7 (Aktivnost, CSV izvoz) i 2.5.8 (Podešavanja): pristup, filteri, beogradske granice, paginacija po kursoru, izvoz od 50.000+ redova kao strim, greške usred izvoza, snimanje podešavanja. |
 | `probe-sidebar-entry.mjs` | Proba 2.5.9 (ulaz u panel): `GET /api/me` preko HTTP-a, HTML `/chat` sa servera i meni u PRAVOM pregledaču (Edge preko `playwright-core`): advokat nema vezu ni reč „Admin panel", admin je vidi i klik otvara pregled, admin bez MFA završava na `/account/security`, pad baze ne lomi meni, nema prefetch-a ka `/admin`. Lažni server ima i `chats`, grešku `select_profiles` i nalog bez profila (`noProfile`). |
 | `lib/mutate.mjs` | Runner za namerne greške (mutacije): kvari jedan izraz, pokreće proveru, očekuje da PADNE; fajlovi se vraćaju u `finally` i pri izlasku, uz proveru heša. |
+| `sql/baseline.sql` | Stanje baze PRE Faze 1 za PGlite (uloge, `auth.*`, `cron` zamena, stare tabele i funkcije). NIJE migracija. |
+| `lib/pglite-db.mjs`, `run-sql-tests.mjs` | SQL harness: osnova + sve migracije iz `supabase/migrations` redom + SQL testovi iz `supabase/tests`; vidi „SQL harness" ispod. |
+| `mutations-sql-2-5-11.mjs` | 39 mutacija migracije 2.5.11 (u memoriji, bez prepisivanja fajlova); svih pet testova se puštaju posle svake. |
+| `mutations-ts-2-5-11.mjs` | 5 mutacija aplikacije (`mfa_removed` u `lib/activity.ts`), hvata ih `npm test`. |
 | `mutations-lib-2-5-7.mjs`, `mutations-app-2-5-7.mjs` | Mutacije 2.5.7 i 2.5.8 (čista logika; povezivanje stranica, rute izvoza i akcije). |
 | `mutations-2-5-9.mjs` | Mutacije 2.5.9: sloj `static` (`npm test`, brzo) i sloj `probe` (build + `probe-sidebar-entry.mjs`, ~2 minuta po mutaciji). |
 
@@ -52,8 +56,29 @@ Ne dokazuje: da pravi Supabase odgovara isto. Lažni server je namerno strog gde
 - Runner za mutacije prepisuje izvorne fajlove: dok radi, IDE javlja da su se fajlovi „promenili na disku". Ne uređivati iste fajlove i ne pokretati build ili `npm test` u međuvremenu. Pre serije na NEcommit-ovanom kodu napraviti kopiju fajlova (heš se proverava na kraju).
 - Shell na ovom računaru izbacuje `\r` iz `$'\r'`, pa `grep -c $'\r'` broji SVE redove. Završetke redova meriti Node-om (`/\r\n/g`). Samo `CLAUDE.md`, `lib/validation*.ts` i `eslint.config.mjs` su CRLF; `docs/*.md` i `tools/**` su LF.
 
-## Kasnije
+## SQL harness (PGlite, dodat u 2.5.11)
 
-PGlite harness za SQL migracije i testove (`supabase/tests/*.sql`) se dodaje ovde kad sledeća migracija (2.5.11) to zatraži. Recept je u beleški "local-verification-recipe".
+```bash
+cd tools/verify && npm install      # jednom
+node tools/verify/run-sql-tests.mjs                        # sve migracije, svi testovi (~6 s)
+node tools/verify/run-sql-tests.mjs --upto=20261029100000  # stanje PRE neke migracije (prefiks naziva)
+node tools/verify/run-sql-tests.mjs --tests=phase1,phase2  # samo ovi testovi
+node tools/verify/mutations-sql-2-5-11.mjs                 # mutacije migracije 2.5.11 (~40 s)
+```
+
+Postgres u WASM-u (PGlite, trenutno PG 18 sa pgvector 0.8.7; Supabase je PG 17). Redosled: `sql/baseline.sql`, pa migracije abecedno, pa testovi. Migracije i testovi se čitaju iz `supabase/` i ništa se ne piše na disk: mutacije se prave u memoriji (`overrides`), a snimak stanja (`dumpDataDir`) štedi 6 s pokretanja po mutaciji. Test prolazi samo ako nema greške I ako ispiše red `rezultat` sa „prošli" (tihi rani izlaz se ne računa). Radna kopija na Windows-u je CRLF (git autocrlf), pa se SQL čita uvek kao LF.
+
+**Šta dokazuje:** ponašanje SQL-a: RLS i restriktivne polise, grantovi, `security definer` funkcije, okidači, CHECK ograničenja, kaskade, kompozitni FK. Kontrola ispravnosti samog harness-a: pre svake nove migracije svi postojeći testovi moraju da prođu, a namerno pokvarena stara migracija mora da obori test (2.5.11: 4 od 5 kvarova uhvaćeno, peti je slojevita odbrana).
+
+**Šta NE dokazuje (mora ostati „nije proveravano" dok vlasnik ne potvrdi na pravoj bazi):**
+- PGlite radi kao superkorisnik `postgres`; u Supabase-u `postgres` nije superkorisnik, pa greške tipa „permission denied" za SQL Editor ovde ne nastaju. Privilegije `postgres` nad `auth.*` su proverene čitanjem kataloga preko MCP-a, ne ovim harness-om.
+- `auth.users` i `auth.mfa_factors` imaju samo kolone koje naš SQL čita; nema GoTrue okidača, a okidač na `auth.mfa_factors` kojeg stvarni Auth server pali (brisanje faktora kroz API ili Dashboard) ovde pali samo `DELETE` iz testa.
+- `pg_cron` je zamenjen tabelom i funkcijom (migracija 2 se pre izvršavanja lišava tri naredbe, vidi `prepareForPglite`; ako te naredbe nestanu iz migracije, harness staje).
+- Planovi izvršavanja (EXPLAIN) i performanse na pravoj bazi; kolone pre Faze 1 su rekonstruisane iz koda (dijagnostika nije sačuvana).
+- Upozorenja baze se broje (`WATCHED_WARNING` u `lib/pglite-db.mjs`): okidač `private.audit_mfa_removed()` namerno guta grešku upisa, pa test mora da dobije tačno jedno upozorenje (odeljak 14), inače pada.
+
+**Zamke:** `--upto` je prefiks naziva (poređenje celog naziva je isključivalo samu traženu migraciju). `node -e` sa `\r` ili regularnim izrazom kvari znakove: pišite fajlove alatom za pisanje. Izlaz grešaka PGlite-a može da ispiše minifikovan izvorni kod: pipe kroz `cut -c1-300 | head`.
+
+## Proba u pregledaču
 
 Proba u pregledaču (`probe-sidebar-entry.mjs`) koristi `playwright-core` iz `node_modules` (zavisnost `next`-a, bez nove instalacije) i Edge instaliran na računaru (`channel: 'msedge'`). Ako ga nema, proba pada na proveri "pregledač se pokreće", a ne prolazi tiho.

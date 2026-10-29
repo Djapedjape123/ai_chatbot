@@ -84,7 +84,7 @@ begin
   select count(*) into n from pg_policies
   where schemaname = 'public'
     and tablename in ('documents', 'document_chunks', 'chats', 'messages')
-    and cmd in ('INSERT', 'UPDATE', 'ALL');
+    and cmd in ('INSERT', 'UPDATE', 'ALL') and permissive = 'PERMISSIVE';  -- restriktivna polisa (2.5.11) samo sužava, ne daje pristup
   if n > 0 then raise exception 'CURENJE: % INSERT/UPDATE/ALL polisa na tabelama sa korisničkim podacima', n; end if;
 
   -- anon nema nikakva prava ni na jednu relaciju u public

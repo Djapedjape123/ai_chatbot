@@ -17,9 +17,9 @@ Za detalje i obrazloženja: `docs/admin-panel-plan.md` (plan) i `CLAUDE.md` (sta
 | 2.5.6 Advokati (tabela, pregled jednog, poziv, blokada, uloga) | Commit-ovan i push-ovan (`55cd533`), migracija primenjena i `phase256` test prošao na pravoj bazi (2026-10-29); **na produkciji delimično viđeno:** u bazi je `user_invited` (2026-10-29 16:59 UTC, akcija poziva prolazi), a pregled naloga, blokada, mejl i link nisu probani (odeljak 2, „2.5.6") |
 | 2.5.7 Aktivnost (`/admin/activity`) + CSV izvoz | Commit-ovano i push-ovano (`0b12fbe`); probano lokalno (129 provera na pravom `next start`, 334 testa, mutacije); **na produkciji nije viđeno** (u bazi `audit_exported` 0); bez migracije (odeljak 2, „2.5.7") |
 | 2.5.8 Podešavanja (`/admin/settings`) | Isto kao 2.5.7, u istom commit-u (u bazi `settings_changed` 0) (odeljak 2, „2.5.8") |
-| 2.5.9 Ulaz u panel (`GET /api/me`, veze u meniju) | Kod napisan i probano lokalno, uključujući pravi pregledač (proba 35/35, 340 testova, mutacije); **nije commit-ovano i nije na produkciji**; bez migracije (odeljak 2, „2.5.9") |
-| 2.5.10 Završna provera | Provere koje Claude sme su urađene (Advisors, `tsc`/lint/build/test/audit, stanje baze); **ručne tačke i SQL testovi čekaju tebe** (odeljak 2, „2.5.10"). Faza 2.5 ostaje `[ ]` |
-| 2.5.11 Tvrdi RLS: `aal2` + blokada na nivou baze + audit uklanjanja MFA | Odlučeno da ide kao jedna migracija posle 2.5.10; **čeka tvoj odgovor na jedno pitanje** (MFA za advokate). Plan i nalaz o `profiles`: `docs/admin-panel-plan.md`, „Korak 2.5.11" |
+| 2.5.9 Ulaz u panel (`GET /api/me`, veze u meniju) | Kod napisan i probano lokalno, uključujući pravi pregledač (proba 35/35, 340 testova, mutacije); commit-ovano (`ad83132`), **meni na produkciji nije viđen**; bez migracije (odeljak 2, „2.5.9") |
+| 2.5.10 Završna provera | Provere koje Claude sme su urađene (Advisors, `tsc`/lint/build/test/audit, stanje baze); **ručne tačke čekaju tebe** (SQL testovi: javio si 2026-10-29 da su sva četiri prošla) (odeljak 2, „2.5.10"). Faza 2.5 ostaje `[ ]` |
+| 2.5.11 Tvrdi RLS: `aal2` + blokada na nivou baze + audit uklanjanja MFA | **Napisano i provereno lokalno (2026-10-29), NIJE primenjeno na Supabase-u i nije commit-ovano.** Migracija `20261029110000_phase2511_hard_rls.sql`, test `phase2511_hard_rls_test.sql`, PGlite harness u `tools/verify/` (5 SQL testova prolazi, 38 od 39 mutacija uhvaćeno, 1 ekvivalentna), akcija `mfa_removed` u aplikaciji (341/341 testova). Izmenjena su i dva stara SQL testa (`phase1`, `phase2`). **Čeka tvoj deo: odeljak 2, „2.5.11"** |
 | 3. Bezbednost fajlova | Posle 2.5 |
 | 4. Isporuka kancelariji | Posle faze 3 |
 
@@ -69,14 +69,14 @@ Putanje u Supabase Dashboard-u (Authentication je u levom meniju):
 5. **Izgubljen telefon admina:** Supabase za TOTP nema rezervne kodove. Vlasnik projekta uklanja faktor u
    Dashboard-u (Authentication → Users → korisnik → faktori), pa se admin ponovo prijavi i uključi novi. Prihvatljivo?
    (Alternativa „admin resetuje MFA drugom adminu" je dodatni posao i nije u planu.)
-6. **NOVO, traži tvoju odluku: MFA štiti aplikaciju, ne i bazu.** Ko ima samo ukradenu lozinku, dobija od Supabase Auth-a sesiju bez koda
+6. **MFA štiti aplikaciju, ne i bazu (napisano u 2.5.11, čeka primenu na Supabase-u, odeljak 2).** Ko ima samo ukradenu lozinku, dobija od Supabase Auth-a sesiju bez koda
    (`aal1`) i preko REST API-ja (anon ključ je javan) može da čita sve što RLS dozvoljava tom nalogu: dokumente, pasuse, razgovore. Naša
    kapija to ne vidi. Rešenje je posebna migracija koja u bazi traži `aal2` za naloge sa uključenim MFA (menja RLS na svim tabelama, pa traži
    tvoje odobrenje i ponovni SQL test). Opcije: (a) odmah, kao 2.5.3b; (b) posle admin panela, a pre pilota (preporuka); (c) ne radimo.
-   Napomena: ni to ne štiti naloge bez uključenog MFA, jer je za advokate opcion. Da li MFA treba da bude obavezan i za advokate? (Posebna odluka.) **Odluka vlasnika 2026-10-29: opcija (b), jedna migracija 2.5.11 posle 2.5.10 a pre Faze 3. Na pitanje o obaveznom MFA za advokate još nema odgovora (opcije (a), (b), (c) i preporuka: plan u `docs/admin-panel-plan.md`, „Korak 2.5.11"). Nalaz: restriktivna polisa ide na 6 tabela, a NE na `profiles`, jer bi blokiran nalog sakrio `disabled_at` od `requireUser()`, koji „profil se ne vidi" tumači kao „nije blokiran".**
-7. **NOVO: audit za isključivanje MFA.** Uklanjanje faktora trenutno nije u audit logu (lista akcija u bazi nema takvu stavku). Dodavanje je
+   Napomena: ni to ne štiti naloge bez uključenog MFA, jer je za advokate opcion. Da li MFA treba da bude obavezan i za advokate? (Posebna odluka.) **Odluka vlasnika 2026-10-29: opcija (b), jedna migracija 2.5.11 posle 2.5.10 a pre Faze 3. Odgovor 2026-10-29 na pitanje o obaveznom MFA za advokate: NE, ostaje opcion, opcija (a) (opcije i plan: `docs/admin-panel-plan.md`, „Korak 2.5.11"). Nalaz: restriktivna polisa ide na 6 tabela, a NE na `profiles`, jer bi blokiran nalog sakrio `disabled_at` od `requireUser()`, koji „profil se ne vidi" tumači kao „nije blokiran".**
+7. **Audit za isključivanje MFA (napisano u 2.5.11, čeka primenu; beleži se samo uklanjanje POTVRĐENOG faktora).** Uklanjanje faktora trenutno nije u audit logu (lista akcija u bazi nema takvu stavku). Dodavanje je
    mala migracija; preporuka je da ide zajedno sa tačkom 6, ako se ona radi.
-8. **NOVO (2.5.6): blokada štiti aplikaciju, ne i REST pristup bazi.** Blokiran advokat sa još važećim tokenom (do 1 sat) i dalje može preko REST API-ja (javni anon ključ) da čita SVOJE redove, jer RLS ne proverava blokadu. Predlog: ista restriktivna polisa kao za MFA (tačka 6), pa jedna migracija proverava i `aal2` i da nalog nije blokiran (traži tvoje odobrenje i ponovni SQL test). Opcije: (a) odmah; (b) posle admin panela, a pre pilota (preporuka, zajedno sa tačkom 6); (c) ne radimo, uz JWT expiry od 1 sata (B7).
+8. **(2.5.6; napisano u 2.5.11, čeka primenu): blokada štiti aplikaciju, ne i REST pristup bazi.** Blokiran advokat sa još važećim tokenom (do 1 sat) i dalje može preko REST API-ja (javni anon ključ) da čita SVOJE redove, jer RLS ne proverava blokadu. Predlog: ista restriktivna polisa kao za MFA (tačka 6), pa jedna migracija proverava i `aal2` i da nalog nije blokiran (traži tvoje odobrenje i ponovni SQL test). Opcije: (a) odmah; (b) posle admin panela, a pre pilota (preporuka, zajedno sa tačkom 6); (c) ne radimo, uz JWT expiry od 1 sata (B7).
 
 ### D. Preneto iz Faze 2, obavezno pre prvog pilota
 - Preview provere sa spuštenim limitima (`DAILY_MESSAGE_LIMIT=2`, `DAILY_DOCUMENT_LIMIT=2`, `IP_BURST_LIMIT=3`, pa vrati):
@@ -167,13 +167,13 @@ Supabase-om. **Nije viđeno:** pravi Supabase sa pravim `aal2` tokenom, izgled u
    6. **Kao advokat** (drugi nalog, običan prozor ili incognito) otvori `/admin/activity` i `/admin/settings`: oba daju 404, kao i `/api/admin/audit/export`.
    7. Javi ishod. **Paginacija na produkciji ne može da se isproba:** strana ima 50 zapisa, a u bazi ih je 8; proveri je kad se nakupi, ili preskoči (proba je pokriva sa 120 zapisa, uključujući zapise sa istim vremenom).
 
-### 2.5.9 Ulaz u panel — URAĐENO (nije commit-ovano), čeka tvoj test na produkciji
+### 2.5.9 Ulaz u panel — URAĐENO, commit-ovano (`ad83132`), čeka tvoj test na produkciji
 `Sidebar.tsx` dobija prop `isAdmin` (link „Admin panel") i link „Bezbednost naloga" za sve; `GET /api/me` (`{ role }`) za `app/chat/page.tsx`.
 
 Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.9". Ukratko: meni u chatu dobija vezu „🔐 Bezbednost naloga" (svi) i „🛡️ Admin panel" (samo admin). Uloga stiže iz `GET /api/me`, koji vraća isključivo `{"role":"admin"}` ili `{"role":"lawyer"}`. Veza samo olakšava ulaz (panel i dalje daje 404 advokatu) i pojavljuje se sekundu posle učitavanja chata, jer se uloga čita posle učitavanja stranice. Lokalno: 340 testova, proba 35/35 u pravom pregledaču (Edge), namerne greške. **Nije viđeno:** produkcija. Izgled menija (desktop i telefon) sam gledao samo na snimcima ekrana iz Edge-a.
 
 **Tvoj deo (redom):**
-1. **Nema SQL-a ni migracije.** Commit i push (predlog poruke: `faza 2.5.9 ulaz u panel`). `main` je produkcija; novo su `GET /api/me`, dve veze u meniju chata i `lib/me.ts` (+ test), uz alate u `tools/verify/`.
+1. ~~Commit i push~~ **Urađeno** (`ad83132`; nema SQL-a ni migracije). Proveri samo da je Production „Ready". `main` je produkcija; novo su `GET /api/me`, dve veze u meniju chata i `lib/me.ts` (+ test), uz alate u `tools/verify/`.
 2. Kad je Production „Ready":
    1. **Pošalji jednu poruku u chat** (odeljak 1A, tačka 1) i javi Claude-u da proveri novi red u `usage_ledger`.
    2. Kao admin: u meniju chata (levo), ispod „Aktivnost", vidiš „Bezbednost naloga", a sekundu posle učitavanja i „Admin panel". Klik otvara `/admin`.
@@ -182,12 +182,13 @@ Supabase-om. **Nije viđeno:** pravi Supabase sa pravim `aal2` tokenom, izgled u
    5. Javi ishod.
 
 ### 2.5.10 Završna provera Faze 2.5 — provere urađene, čekaju se tvoje ručne tačke
+**Stanje baze 2026-10-29 18:00 UTC (čet 2.5.11, bez tvoje dopune):** pozvani nalog je potvrdio mejl 35 s posle poziva i prijavio se (u logu `/auth/v1/verify` 303), dakle mejl je stigao i link radi; **postavljanje lozinke preko `/set-password` nije viđeno** (u logu za 24 sata nema nijednog `PUT /auth/v1/user`). Pregled naloga viđen na produkciji (`admin_viewed_user` 2). Blokada, CSV izvoz i promena podešavanja: 0 zapisa. **Chat i dalje nije potvrđen** (poslednji red u `usage_ledger` je 2026-10-28 14:57, nijedan poziv `reserve_usage` u logu).
 Ručni E2E iz `docs/admin-panel-plan.md` (osam tačaka), Advisors, `tsc`/lint/build/test/audit, pa u CLAUDE.md Faza 2.5 postaje `[x]`.
 
 Detalji: `docs/admin-panel-plan.md`, „Rezultat 2.5.10". **Faza 2.5 u CLAUDE.md ostaje `[ ]` dok ne potvrdiš ručne tačke.** Urađeno 2026-10-29: Advisors (tačno 5 upozorenja za `admin_*` + `vector` + zaštita od procurelih lozinki + namerni INFO za `ip_rate_limit`), provera stanja baze (RLS, grantovi), `tsc`, lint (0 grešaka), `next build`, `npm test` 340/340, `npm audit` 0, obe probe na pravom `next start` (129/129 i 35/35).
 
 **Tvoj deo (redom):**
-1. **SQL Editor: pokreni sva četiri testa**, svaki mora da ispiše „prošli": `supabase/tests/phase1_rls_test.sql`, `phase2_rls_test.sql`, `phase25_admin_test.sql`, `phase256_users_test.sql` (uzmi ih iz repozitorijuma). Poznato je samo da je `phase256` prošao posle poslednje migracije. Ako neki puca, pošalji ceo ispis.
+1. **Urađeno (javio si 2026-10-29: sva četiri prošla).** Za ponavljanje posle sledeće migracije: pokreni sva četiri testa, svaki mora da ispiše „prošli": `supabase/tests/phase1_rls_test.sql`, `phase2_rls_test.sql`, `phase25_admin_test.sql`, `phase256_users_test.sql` (uzmi ih iz repozitorijuma). Poznato je samo da je `phase256` prošao posle poslednje migracije. Ako neki puca, pošalji ceo ispis.
 2. **Ručne tačke** (označi koje si prošao):
    - [ ] 1. Incognito, admin nalog: prijava lozinkom, **ne unosi kod**, otvori `/admin`: mora da traži kod. (Ulaz sa kodom si već probao.)
    - [ ] 2. Advokatski nalog: `/admin` daje 404. Pa provera `42501` preko REST-a (traži lozinku advokatskog naloga). U terminalu, sa vrednostima iz Dashboard-a (Project Settings → API):
@@ -201,7 +202,61 @@ Detalji: `docs/admin-panel-plan.md`, „Rezultat 2.5.10". **Faza 2.5 u CLAUDE.md
    - [ ] 5. Podešavanja: limit 2 pa 429 na trećoj poruci, **vrati na 100**: odeljak 2, „Tvoj deo za 2.5.7 i 2.5.8", tačka 2.5.
    - [ ] 6. CSV u Excel-u: odeljak 2, „Tvoj deo za 2.5.7 i 2.5.8", tačka 2.3.
 3. Javi koje tačke prolaze, a koje ne (i da li je `;` u CSV-u radio). Kad su 1 do 6 potvrđene, Faza 2.5 postaje `[x]`.
-4. **Odgovori na pitanje za 2.5.11** (odeljak 1C, tačka 6): da li MFA postaje obavezan i za advokate? Opcije (a), (b), (c) i preporuka su u `docs/admin-panel-plan.md`, „Korak 2.5.11".
+4. **Urađeno: odgovor je NE, MFA ostaje opcion (opcija (a)).** Staro pitanje za 2.5.11: (odeljak 1C, tačka 6): da li MFA postaje obavezan i za advokate? Opcije (a), (b), (c) i preporuka su u `docs/admin-panel-plan.md`, „Korak 2.5.11".
+
+### 2.5.11 Tvrdi RLS (aal2 + blokada u bazi + audit uklanjanja MFA) — NAPISANO i provereno lokalno, NIJE primenjeno na Supabase-u
+Šta je napravljeno, odluke i šta nije provereno: `docs/admin-panel-plan.md`, „Rezultat 2.5.11". Ukratko: šest restriktivnih polisa (`documents`, `document_chunks`, `chats`, `messages`, `usage_ledger`, `audit_log`) koje se I-uju sa postojećim: nalog sa **potvrđenim MFA faktorom** vidi podatke samo sa tokenom `aal2`, nalog koji je **blokiran** (`profiles.disabled_at` ili aktivan `banned_until`) ne vidi ništa ni sa važećim tokenom, nalog bez faktora radi kao pre. `profiles` namerno NEMA polisu (aplikacija po njemu otkriva blokadu). Okidač na `auth.mfa_factors` upisuje `mfa_removed` kad se obriše potvrđen faktor (ko je uklonio, baza ne zna). Zatvara C6, C7 i C8 čim se ovo primeni i proveri.
+
+Lokalno (PGlite, `node tools/verify/run-sql-tests.mjs`): sva 5 SQL testova prolaze; 39 mutacija migracije (38 uhvaćeno, 1 ekvivalentna); `npm test` 341/341, `tsc`, lint, build, audit, probe 129/129 i 35/35. **Nije viđeno:** ništa na pravoj bazi, a naročito okidač koji pali pravi Auth server (korak 2).
+
+**Tvoj deo (redom; redosled je obavezan):**
+1. **SQL Editor: primeni `supabase/migrations/20261029110000_phase2511_hard_rls.sql`, PRE commit-a i push-a.** Mora da završi bez greške. Jedna je transakcija: ako pukne, baza je netaknuta; pošalji ceo ispis. Kod ne zavisi od migracije (dodaje samo prikaz nove akcije), pa nema prozora u kom nešto ne radi.
+2. **Odmah posle, pre svega ostalog: proba okidača** (jedino što lokalni harness ne može da dokaže: da li Auth server pali okidač na tabeli `auth.mfa_factors` bez greške). Nalog bez faktora (npr. onaj koji počinje sa `ebaad2f0`, nema podataka): prijavi ga u incognito prozoru, `/account/security` → uključi dvostepenu prijavu (QR, kod). Zatim ga isključi **ili** u Dashboard-u (Authentication → Users → taj nalog → ukloni faktor). Uklanjanje mora da prođe bez greške, a u SQL Editoru:
+   ```sql
+   select action, actor_email, resource_id, metadata, created_at
+   from public.audit_log where action = 'mfa_removed' order by created_at desc limit 3;
+   ```
+   mora da vrati red sa `metadata` = `{"status": "verified", "factor_type": "totp"}`. **Ako uklanjanje pukne ili zapisa nema:** odmah `drop trigger if exists on_mfa_factor_removed on auth.mfa_factors;` i javi ispis (uklanjanje faktora tada opet radi, samo bez traga). Ne koristi svoj admin nalog za ovu probu.
+3. **Pet SQL testova**, svaki mora da ispiše „prošli". Uzmi fajlove iz repozitorijuma (**`phase1` i `phase2` su izmenjeni**, stare kopije bi pale): `supabase/tests/phase1_rls_test.sql`, `phase2_rls_test.sql`, `phase25_admin_test.sql`, `phase256_users_test.sql`, `phase2511_hard_rls_test.sql`. Ako neki puca, pošalji ceo ispis (`CURENJE: …` znači da nešto vidi previše, `PRESTROGO: …` da nalog gubi pristup onome što treba da vidi).
+4. **Advisors → Security:** isto kao pre, bez novih upozorenja: 5 `admin_*`, `vector` u šemi `public`, zaštita od procurelih lozinki i namerni INFO za `ip_rate_limit` (šema `private` nije izložena REST-u).
+5. **C6: REST sa tokenom bez koda ne vidi ništa.** Vrednosti iz Dashboard-a (Project Settings → API). Koristi nalog sa MFA (tvoj admin). **Admin nema nijedan dokument ni razgovor, pa se provera radi preko `audit_log` (ima ga):**
+   ```
+   URL="https://<ref>.supabase.co"; ANON="<anon ključ>"
+   # 1. prijava lozinkom daje token bez koda (aal1): zapiši "access_token" (T1) i "user.factors[0].id" (FAKTOR_ID)
+   curl -s -X POST "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" -d '{"email":"<admin>","password":"<lozinka>"}'
+   # 2. sa T1 mora da vrati [] (pre migracije vraća tvoje zapise)
+   curl -s "$URL/rest/v1/audit_log?select=action,created_at" -H "apikey: $ANON" -H "Authorization: Bearer <T1>"
+   # 3. KONTROLA (bez nje [] ne dokazuje ništa): podigni token na aal2
+   curl -s -X POST "$URL/auth/v1/factors/<FAKTOR_ID>/challenge" -H "apikey: $ANON" -H "Authorization: Bearer <T1>"      # vraća "id" = CHALLENGE_ID
+   curl -s -X POST "$URL/auth/v1/factors/<FAKTOR_ID>/verify" -H "apikey: $ANON" -H "Authorization: Bearer <T1>" -H "Content-Type: application/json" -d '{"challenge_id":"<CHALLENGE_ID>","code":"<6 cifara iz aplikacije>"}'     # vraća novi "access_token" (T2)
+   # 4. isti upit sa T2 mora da vrati zapise
+   curl -s "$URL/rest/v1/audit_log?select=action,created_at" -H "apikey: $ANON" -H "Authorization: Bearer <T2>"
+   ```
+6. **C8: blokiran nalog sa još važećim tokenom ne vidi ništa.** Nalog koji počinje sa `c7577c7f` ima 3 razgovora (advokat bez MFA):
+   ```
+   # 1. PRE blokade: prijava tim nalogom, zapiši "access_token" (T3)
+   curl -s -X POST "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" -d '{"email":"<advokat>","password":"<lozinka>"}'
+   # 2. kontrola: vidi 3 razgovora
+   curl -s "$URL/rest/v1/chats?select=id" -H "apikey: $ANON" -H "Authorization: Bearer <T3>"
+   # 3. u panelu: /admin/users → taj nalog → Blokiraj (potvrda)
+   # 4. isti T3 (još važi) mora ODMAH da vrati []
+   curl -s "$URL/rest/v1/chats?select=id" -H "apikey: $ANON" -H "Authorization: Bearer <T3>"
+   # 5. profil MORA ostati čitljiv i pokazati blokadu (tako aplikacija zna da je nalog blokiran): 1 red, disabled_at nije null
+   curl -s "$URL/rest/v1/profiles?select=id,disabled_at" -H "apikey: $ANON" -H "Authorization: Bearer <T3>"
+   # 6. Odblokiraj u panelu; isti T3 opet vidi 3 razgovora.
+   ```
+   Ako nalog nemaš lozinku: isti test sa nalogom `ba1e7d91` (3 dokumenta), upit `…/rest/v1/documents?select=id`.
+7. **Tek onda commit i push** (predlog poruke: `faza 2.5.11 tvrdi rls`). `main` je produkcija.
+8. Kad je Production „Ready": `/admin/activity` mora da prikaže zapis iz koraka 2 kao „Uklonjena dvostepena prijava" (žuto) sa napomenom da izvršilac nije zabeležen, a filter „Vrsta aktivnosti" ima novu stavku.
+9. (Preporuka, 2 minuta) plan izvršavanja na pravoj bazi, da se potvrdi da se funkcije računaju jednom po upitu (u planu treba da vidiš `InitPlan`, ne `SubPlan` po redu):
+   ```sql
+   begin;
+   select set_config('request.jwt.claims', '{"sub":"<ID bilo kog naloga>","role":"authenticated","aal":"aal2"}', true);
+   set local role authenticated;
+   explain (analyze, buffers) select * from public.document_chunks limit 10;
+   rollback;
+   ```
+10. Javi ishod (naročito korak 2 i 5 do 6). Povratak cele migracije je u njenom zaglavlju.
 
 ## 3. Prvi admin (radiš ti, tek kad je 2.5.5 na produkciji; do tada `/admin` ne postoji)
 **Urađeno 2026-10-29:** u bazi je 1 admin sa 1 potvrđenim faktorom, a `/admin` se otvara. Ostalo u ovom odeljku važi samo za naredne admine.
@@ -214,20 +269,25 @@ Detalji: `docs/admin-panel-plan.md`, „Rezultat 2.5.10". **Faza 2.5 u CLAUDE.md
 ## 4. Kako znamo da je Faza 2.5 gotova
 - Svih osam ručnih E2E tačaka iz plana (admin bez MFA ne ulazi; advokat dobija 404 na `/admin` i `42501` na RPC; poziv stiže mejlom;
   blokiran advokat ne može da se prijavi; limit 2 daje 429 na trećoj poruci; CSV se otvara sa ispravnim slovima; Advisors bez neočekivanog).
-- `phase1`, `phase2` i `phase25` SQL testovi prolaze na pravoj bazi.
+- Svih pet SQL testova (`phase1`, `phase2`, `phase25`, `phase256`, `phase2511`) prolazi na pravoj bazi, a migracija 2.5.11 je primenjena i proverena (korak 2, 5 i 6 u odeljku 2, „2.5.11").
 - U CLAUDE.md Faza 2.5 je `[x]`, a Faza 3 (bezbednost fajlova) je sledeća.
 
 ## 5. Šta uneti na početku sledećeg ćaskanja
 Kopiraj ceo blok ispod i popuni „Dopuna od mene" (prazno = nisam probao). Sve što ne piše kao urađeno Claude smatra neurađenim i proverava u bazi. Svaki čet na kraju zamenjuje ovaj odeljak novim promptom.
 
 ```
-Pročitaj redom: CLAUDE.md, docs/next-steps.md, docs/admin-panel-plan.md (naročito „Rezultat 2.5.9", „Rezultat 2.5.10" i „Korak 2.5.11"), tools/verify/README.md i memoriju (local-verification-recipe). Odgovaraj na srpskom. Radi sam, bez podagenata.
+Pročitaj redom: CLAUDE.md, docs/next-steps.md, docs/admin-panel-plan.md (naročito „Rezultat 2.5.10" i „Rezultat 2.5.11"), tools/verify/README.md (odeljak „SQL harness") i memoriju (local-verification-recipe). Odgovaraj na srpskom. Radi sam, bez podagenata.
 
-STANJE (29.10.2026.)
-- Faze 1 i 2 su zatvorene. Faza 2.5 (admin panel): urađeni su 2.5.1 do 2.5.10, ali je u CLAUDE.md i dalje [ ] jer ručne tačke 1 do 6 iz „Rezultat 2.5.10" nisu potvrđene. 2.5.1 do 2.5.8 su commit-ovani i push-ovani (poslednji: 0b12fbe). 2.5.9 (GET /api/me, veze „Bezbednost naloga" i „Admin panel" u meniju chata) je napisan i probano lokalno (340 testova, proba 35/35 u pravom pregledaču Edge, namerne greške), bez migracije. Da li je commit-ovan NE znam: proveri git status i git log.
-- Potvrđeno na produkciji do sada: 2.5.3 (MFA) i 2.5.5 (/admin pregled). NIJE viđeno: chat posle izmena 2.5.2 do 2.5.6 (nema novog reda u usage_ledger), 2.5.4 (pozivnica; u bazi postoji user_invited iz 2026-10-29 16:59 UTC, ali ne znam da li je mejl stigao i link radio), 2.5.6 (pregled naloga, blokada), 2.5.7 i 2.5.8 (Aktivnost, CSV, Podešavanja), 2.5.9 (meni).
-- Alati u tools/verify/ (README.md): lažni Supabase, probe na pravom next start (probe-admin-activity.mjs, probe-sidebar-entry.mjs sa Edge-om preko playwright-core), runner za mutacije. PGlite harness za SQL još NE postoji: dodaje se u ovom koraku (2.5.11), po receptu iz memorije.
-- Ostaje: 2.5.11 (tvrdi RLS: aal2 i blokada u bazi na 6 tabela, audit uklanjanja MFA), pa Faza 3 (bezbednost fajlova) i Faza 4 (isporuka kancelariji).
+O PROJEKTU (ukratko, detalji su u CLAUDE.md)
+Pravni AI asistent (RAG) za advokatske kancelarije, B2B: Next.js 16 + Supabase (Postgres, pgvector, RLS) + Voyage AI + Claude. Cilj je zero-trust i zaštita poverljivosti klijenata (NDA). Faze 1 i 2 su zatvorene. Faza 2.5 (admin panel za vlasnika kancelarije) je skoro gotova. Sledi Faza 3 (bezbednost fajlova), pa Faza 4 (isporuka kancelariji, silo po kancelariji).
+
+STANJE (kraj četa 2026-10-29)
+- Faza 2.5: urađeni su 2.5.1 do 2.5.11, ali je u CLAUDE.md i dalje [ ] jer ručne tačke 1 do 6 iz „Rezultat 2.5.10" nisu potvrđene (osim ako Dopuna kaže drugačije). 2.5.1 do 2.5.9 su commit-ovani i push-ovani (poslednji: ad83132). Necommit-ovano je (proveri git status): 2.5.11 (migracija supabase/migrations/20261029110000_phase2511_hard_rls.sql, supabase/tests/phase2511_hard_rls_test.sql, izmena po jedne linije u phase1 i phase2 testu, lib/audit.ts, lib/activity.ts + testovi, SQL harness u tools/verify/) i dokumenti.
+- 2.5.11 je napisano i lokalno provereno (PGlite: 5/5 SQL testova; 38 od 39 mutacija migracije uhvaćeno, 1 dokazano ekvivalentna; npm test 341/341, tsc, lint, build, audit, probe 129/129 i 35/35). NIJE primenjeno na Supabase-u dok Dopuna ne kaže drugačije. Okidač na auth.mfa_factors nije viđen sa pravim Auth serverom.
+- Potvrđeno u bazi/logu (2026-10-29 18:00 UTC): pozvani nalog je potvrdio mejl 35 s posle poziva i prijavio se, a postavljanje lozinke (PUT /auth/v1/user) NIJE viđeno; pregled naloga viđen (admin_viewed_user 2). NIJE viđeno: chat posle izmena 2.5.2 do 2.5.6 (poslednji red u usage_ledger 2026-10-28 14:57), blokada, CSV izvoz, Podešavanja, meni iz 2.5.9.
+- ODLUKE: MFA ostaje opcion za advokate (opcija (a)); restriktivne polise na 6 tabela, NE na profiles; okidač beleži samo POTVRĐEN faktor i ne zaustavlja uklanjanje faktora kad upis audita padne.
+- Alati u tools/verify/ (README.md): lažni Supabase i probe na pravom next start (probe-admin-activity.mjs, probe-sidebar-entry.mjs), runner za mutacije, i SQL harness na PGlite-u (node tools/verify/run-sql-tests.mjs; node tools/verify/mutations-sql-2-5-11.mjs; zavisnosti se instaliraju sa npm install u tools/verify).
+- Ostaje: potvrda 2.5.11 na pravoj bazi, zatvaranje Faze 2.5, pa plan Faze 3, pa Faza 4.
 
 KORAK 0, pre ikakvog koda (veruj bazi, ne meni): preko Supabase MCP-a (read-only) pokreni
   select (select max(created_at) from public.usage_ledger) as poslednji_chat_red,
@@ -240,44 +300,54 @@ KORAK 0, pre ikakvog koda (veruj bazi, ne meni): preko Supabase MCP-a (read-only
          (select count(*) from public.profiles where disabled_at is not null) as blokirani,
          (select to_jsonb(s) - 'updated_by' from public.office_settings s) as podesavanja,
          (select max(last_sign_in_at) from auth.users) as poslednja_prijava;
-Javi mi u par redova šta je potvrđeno, a šta nije. Zatim proveri git log i git status. Uz to, preko MCP-a query_logs (source 'edge_logs', poslednja 24 sata, grupisano po log_attributes['request.path'] i status) vidi da li ima poziva reserve_usage (to je POST /api/chat) i da li se vidi /rest/v1/rpc/admin_update_settings.
-- Ako je poslednji_chat_red stariji od 2026-10-28 14:57, chat NIJE potvrđen: reci mi da pošaljem jednu poruku, pa proveri novi red. Ako chat vrati grešku (403 ili 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
+i drugi upit: select to_regprocedure('private.mfa_satisfied()') is not null as funkcije, (select count(*) from pg_policies where schemaname = 'public' and permissive = 'RESTRICTIVE') as restriktivne_polise (očekuje se 6 posle migracije, 0 pre), (select count(*) from pg_trigger where tgname = 'on_mfa_factor_removed' and not tgisinternal) as okidac, (select count(*) from public.audit_log where action = 'mfa_removed') as mfa_removed_zapisi;
+i treći (ne ispisuj email adrese): select u.invited_at, u.email_confirmed_at, u.last_sign_in_at, (u.encrypted_password is not null and u.encrypted_password <> '') as ima_lozinku, p.role, p.disabled_at from auth.users u left join public.profiles p on p.id = u.id where u.invited_at is not null order by u.invited_at desc limit 3;
+Javi mi u par redova šta je potvrđeno, a šta nije (uključujući da li je migracija 2.5.11 primenjena). Zatim proveri git log i git status. Uz to, preko MCP-a query_logs (source 'edge_logs', poslednja 24 sata, grupisano po log_attributes['request.path'], metodi i statusu) vidi ima li poziva reserve_usage (to je POST /api/chat), rpc/admin_update_settings i PUT /auth/v1/user.
+- Ako je poslednji_chat_red stariji od 2026-10-28 14:57 ili isti, chat NIJE potvrđen: reci mi da pošaljem jednu poruku, pa proveri novi red. Ako chat vrati grešku (403 ili 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
 - Ono što ne vidiš iz baze (izgled u browseru, stiže li mejl, Excel) pitaj me samo ako nije popunjeno ispod. Sve što ovde ne piše kao urađeno smatraj neurađenim, uključujući Dashboard stavke B2 do B9 iz next-steps.md.
 
 DOPUNA OD MENE (popunjavam ono što znam; prazno = nisam probao)
+- Migracija 2.5.11 primenjena u SQL Editoru (bez greške): ____
+- Proba okidača (next-steps, „2.5.11", korak 2): uklanjanje faktora prošlo bez greške, zapis mfa_removed postoji: ____
+- Pet SQL testova na pravoj bazi (koji prolaze; pun ispis ako neki puca): ____
+- Advisors posle migracije: ____
+- C6 (aal1 token vraća [], aal2 vraća zapise) i C8 (blokiran nalog vraća [], profil čitljiv): ____
+- Commit/push 2.5.11 (hash): ____
 - Chat poruka na produkciji poslata: ____
-- Četiri SQL testa na pravoj bazi (phase1, phase2, phase25, phase256) prošla: ____
-- Ručne tačke 1 do 6 iz „Rezultat 2.5.10" (koje prolaze, koje ne; CSV u Excel-u: slova i 11 kolona razdvojeno, ili je sve u jednoj koloni): ____
+- Ručne tačke 1 do 6 iz „Rezultat 2.5.10" (koje prolaze; CSV u Excel-u: slova i 11 kolona razdvojeno, ili je sve u jednoj koloni): ____
+- Pozvani advokat: lozinka postavljena preko /set-password, prijava radi: ____
 - Meni iz 2.5.9 na produkciji (admin vidi „Admin panel", advokat ne vidi, telefon): ____
 - Dashboard B3, B4, B8, B9 (URL Configuration, SMTP, email šabloni, minimalna dužina lozinke 12): ____
 - Env granice na Vercel-u (DAILY_MESSAGE_LIMIT i ostale; vrednosti): ____
-- ODGOVOR NA PITANJE ZA 2.5.11, MFA za advokate je: (a) opcion, (b) obavezan za sve, (c) podešavanje kancelarije: ____
 - Ostalo: ____
 
 ZADATAK OVOG ČETA
-1. Ako su ručne tačke 1 do 6 potvrđene (Dopuna): Faza 2.5 postaje [x] u CLAUDE.md, uz kratak spisak šta je i kako potvrđeno. Ako nisu, ostaje [ ] sa spiskom šta fali.
-2. 2.5.11 po planu iz „Korak 2.5.11", sa mojim odgovorom (a, b ili c) iz Dopune. Ako je odgovor prazan, NE piši migraciju: samo pripremi PGlite harness (tačka 2a) i pitaj me ponovo.
-   a. PGlite harness u tools/verify/ po receptu iz memorije: bazna šema pre Faze 1 + sve migracije redom + četiri postojeća SQL testa; sva četiri moraju da prođu PRE izmene (to dokazuje da harness valja). Zavisnosti idu u tools/verify/package.json (ne u koren aplikacije), uz tools/verify/node_modules u .gitignore; pre dodavanja reci mi u dve rečenice šta dodaješ.
-   b. Test-prvo: supabase/tests/phase2511_hard_rls_test.sql, vidi ga kako pada.
-   c. Migracija supabase/migrations/<ts>_phase2511_hard_rls.sql (samo dodaje; restriktivne polise na 6 tabela, NE na profiles; private.mfa_satisfied() i private.account_active(); mfa_removed u audit_log_action_check; okidač na auth.mfa_factors).
-   d. Svih pet SQL testova prolazi; namerne greške u migraciji (uklonjen uslov aal2, uslov blokade na profiles, aal1 umesto aal2, okidač bez provere da nalog postoji, polisa permissive umesto restrictive, itd.) moraju da obore test.
-   e. Kod: akcija mfa_removed u lib/activity.ts (tsc je traži), test; npm test, tsc, lint, build, audit, probe iz tools/verify.
-   f. „Tvoj deo": primeni migraciju PRE push-a, pet SQL testova, Advisors, provere C6, C8 i C7 sa curl-om (korak 9 u planu).
-3. Ne diraj postojeće polise iz Faze 1 (samo dodaj restriktivne); to je moje odobrenje za dodavanje, ne za izmenu.
+1. 2.5.11 na pravoj bazi: ako je migracija primenjena, potvrdi stanje u bazi (Korak 0), pa upiši ishod C6, C7 i C8 u docs/admin-panel-plan.md i CLAUDE.md. Ako okidač ne radi ili neki SQL test puca na pravoj bazi: superpowers:systematic-debugging, ispravka test-prvo kroz SQL harness (izlaz za okidač: premestiti private.audit_mfa_removed() u public, ponoviti harness i mutacije). Ako migracija nije primenjena, ne radi ništa novo oko nje; podseti me.
+2. Ako su ručne tačke 1 do 6 potvrđene (Dopuna): Faza 2.5 postaje [x] u CLAUDE.md, uz kratak spisak šta je i kako potvrđeno. Ako nisu, ostaje [ ] sa spiskom šta fali.
+3. FAZA 3 (bezbednost PDF i Word fajlova), SAMO PLAN, BEZ KODA: postavi mi PRVO PITANJE (ispod) i sačekaj odgovor. Posle odgovora postavi preostala pitanja (najviše 6, jedno po jedno ako zavise od prethodnog), pa upiši dogovoren plan u docs/file-security-plan.md i u CLAUDE.md („FAZA 3"), isto kao što je rađeno za Fazu 2 i 2.5. Kod tek posle potvrde plana.
+
+   Činjenice o današnjem stanju (već proverene 2026-10-29, ne istražuj ponovo osim ako sumnjaš):
+   - PDF ide na POST /api/ingest (app/api/ingest/route.ts), parsira se na serveru bibliotekom unpdf (pdf.js) u istom procesu kao ostatak aplikacije. Zod (lib/validation.ts) proverava samo da je f.type === 'application/pdf' ILI da ime završava na .pdf, i da je fajl do 4MB. Nema provere magičnih bajtova (%PDF-), nema ograničenja broja stranica ni dužine teksta pre parsiranja, nema timeout-a ni izolacije parsiranja (samo maxDuration = 60 cele funkcije). Neuspelo parsiranje je 400 invalid_pdf uz audit document_upload_blocked.
+   - Word (.docx) NE ide na server kao fajl. Parsira se u pregledaču (mammoth, app/chat/page.tsx, handleFileAttachment: proverava samo file.name.endsWith('.docx'), bez ograničenja veličine), a izvučen tekst se lepi u pitanje koje ide na POST /api/chat. Server nikad ne vidi originalni .docx, pa ga ne može ni skenirati. Word se ne indeksira u bazu znanja.
+   - Nema antivirusa ni provere aktivnog sadržaja (PDF: /JavaScript, /Launch, /EmbeddedFile; DOCX: vbaProject.bin, makroi, OLE, spoljni odnosi, zip bomba). Hosting je Vercel (serverless): nema stalnog procesa za ClamAV. Spoljni AI servisi (Voyage, Claude) već primaju tekst dokumenata.
+   - Već postoje: audit document_upload_blocked (razlozi unreadable_pdf, no_text, too_many_chunks), dvostepeno upozorenje 409 za sumnjiv sadržaj (prompt injection) pri otpremanju, ledger rezervacija, IP burst.
+
+   PRVO PITANJE: „Smeju li dokumenti klijenata da napuste naš sistem radi skeniranja na viruse (spoljni servis kao VirusTotal ili cloud skener, uz DPA i zero-retention), ili skeniranje mora da ostane u našoj infrastrukturi? Moja preporuka: sada samo strukturna provera u našem kodu (magični bajtovi, aktivan sadržaj, ograničenja i timeout), a pravi antivirus (ClamAV) kao poseban servis po kancelariji tek u Fazi 4 (silo)."
+   Kratak plan koji treba predložiti posle odgovora (menja se prema odgovorima): 3.1 provera tipa po sadržaju (magični bajtovi %PDF- i ZIP za docx) umesto po imenu i MIME-u; 3.2 detekcija aktivnog sadržaja u PDF i DOCX, odluka odbij ili upozori (kao sumnjiv sadržaj, dvostepeno); 3.3 granice pre parsiranja (broj stranica, dužina teksta, odnos raspakovanja za zip bombu) i timeout ili izolacija parsiranja; 3.4 Word: ostaje u pregledaču (bez skeniranja) ili ide na server; 3.5 antivirus prema odgovoru na prvo pitanje; 3.6 novi razlozi u auditu (not_pdf, active_content, archive_bomb, parse_timeout) vidljivi u /admin/activity; 3.7 testovi: generisani uzorci (PDF sa /JavaScript, docx sa vbaProject.bin, zip bomba, EICAR niska za putanju antivirusa), mutacije, probe.
 
 MOJE ODLUKE (važe osim ako ispod dopišem drugačije)
-- C1 do C5 kako su predložene u next-steps.md (CSV ';', mesečni budžet ≥ dnevni, ime bez < i >, MFA kapija za naloge sa uključenim MFA, izgubljen telefon = ja uklanjam faktor u Dashboard-u). Ako CSV u Excel-u ispadne u jednoj koloni, javiću: tada se menja CSV_DELIMITER.
-- C6, C7, C8: opcija (b), jedna migracija „2.5.11" posle 2.5.10 a pre Faze 3.
+- C1 do C5 kako su predložene u next-steps.md (CSV ';', mesečni budžet ≥ dnevni, ime bez < i >, MFA kapija za naloge sa uključenim MFA, izgubljen telefon = ja uklanjam faktor u Dashboard-u; to sada ostavlja zapis mfa_removed). Ako CSV u Excel-u ispadne u jednoj koloni, javiću: tada se menja CSV_DELIMITER.
+- C6, C7, C8: urađeno u 2.5.11, opcija (a): MFA ostaje opcion za advokate.
 - Radi se samo na main, bez novih grana.
 
 PRAVILA (uvek)
-- Test-prvo (superpowers:test-driven-development): vidi test ili probu kako pada iz pravog razloga, pa piši kod; posle toga namerne greške (mutacije) u novom kodu. Pre izveštaja superpowers:verification-before-completion.
-- BEZ commit-a i push-a (radim ja). Pre dodavanja alata ili fajlova van plana reci mi u dve rečenice šta dodaješ.
+- Test-prvo (superpowers:test-driven-development): vidi test ili probu kako pada iz pravog razloga, pa piši kod; posle toga namerne greške (mutacije) u novom kodu. Za SQL: migracija ide kroz SQL harness (node tools/verify/run-sql-tests.mjs; svih pet testova mora da prođe pre i posle) i mutacije u memoriji. Pre izveštaja superpowers:verification-before-completion.
+- BEZ commit-a i push-a (radim ja). Pre dodavanja alata, biblioteka ili fajlova van plana reci mi u dve rečenice šta dodaješ. Postojeće SQL testove menjaj samo uz razlog koji ćeš mi javiti (moram da pokrenem izmenjene fajlove).
 - Svaka stranica u app/admin zove requireAdminPage(next), svaka server akcija requireAdminAction(), svaka admin ruta requireAdmin() i proverava mfa === 'ok' (lib/admin-guards.test.ts to proverava). Stranice u app/admin NEMAJU metadata (naslov taba otkriva panel). Čitanja idu preko korisničkog klijenta, supabaseAdmin samo za upise i Auth Admin API (trajna pravila 1 do 7 u CLAUDE.md).
 - Migracija: fajl u supabase/migrations + SQL test; ja je primenjujem PRE push-a (kod zavisi od nje); posle toga SQL testovi i Advisors.
 - Pre pisanja Next koda pročitaj relevantne strane u node_modules/next/dist/docs/ (AGENTS.md: ovo nije Next.js koji znaš).
 - Pre izveštaja: npm test, tsc, lint, next build (sa NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 i NEXT_PUBLIC_SUPABASE_ANON_KEY=fake-anon-key), npm audit --omit=dev i probe iz tools/verify na pravom next start. Izveštaj pošten: „viđeno" odvojeno od „nije proveravano".
-- Zamke koje su već plaćene (tools/verify/README.md i memorija): fajlove piši alatima Write i Edit, ne bash heredoc-om ni node -e sa šablonskim stringovima; CLAUDE.md je CRLF (menjaj ga jednoredno, proveri Node-om, ne grep-om); layout se izvršava pre stranice, pa admin bez MFA uvek ide na next=/admin; Response.text() odbacuje BOM; polja server akcije idu sa prefiksom _1_; ne pokreći mutacije, build ni npm test dok menjaš iste fajlove; pre mutacija na necommit-ovanom kodu napravi kopiju fajlova u scratchpad; probne mutacije traju oko 2 minuta svaka (pokreni u pozadini i čekaj).
+- Zamke koje su već plaćene (tools/verify/README.md i memorija): fajlove piši alatima Write i Edit, ne bash heredoc-om ni node -e sa regularnim izrazima ili \r (ovaj čet je opet upao u tu zamku); CLAUDE.md je CRLF (menjaj ga jednoredno, proveri Node-om, ne grep-om); layout se izvršava pre stranice, pa admin bez MFA uvek ide na next=/admin; Response.text() odbacuje BOM; polja server akcije idu sa prefiksom _1_; ne pokreći mutacije, build ni npm test dok menjaš iste fajlove; pre mutacija na necommit-ovanom kodu napravi kopiju fajlova u scratchpad i posle uporedi; izlaz grešaka PGlite-a ume da ispiše minifikovan izvorni kod, pa uvek pipe kroz cut -c1-300 | head.
 
-KRAJ ČETA: upiši rezultat u docs/admin-panel-plan.md, CLAUDE.md i docs/next-steps.md; napiši „Tvoj deo" (SQL, Dashboard, ručni testovi); u docs/next-steps.md zameni odeljak 5 novim promptom za sledeći čet; ažuriraj memoriju ako si naučio nešto što ne piše u receptu.
+KRAJ ČETA: upiši rezultat u docs/admin-panel-plan.md (ili docs/file-security-plan.md za Fazu 3), CLAUDE.md i docs/next-steps.md; napiši „Tvoj deo" (SQL, Dashboard, ručni testovi); u docs/next-steps.md zameni odeljak 5 novim promptom za sledeći čet; ažuriraj memoriju ako si naučio nešto što ne piše u receptu.
 ```

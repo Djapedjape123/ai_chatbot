@@ -25,6 +25,7 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   admin_viewed_user: 'Pregledan nalog advokata',
   audit_exported: 'Izvezen dnevnik aktivnosti',
   mfa_enrolled: 'Uključena dvostepena prijava',
+  mfa_removed: 'Uklonjena dvostepena prijava',
 };
 
 const ROLE_LABELS: Record<string, string> = { admin: 'admin', lawyer: 'advokat' };
@@ -39,11 +40,13 @@ const SETTING_LABELS: [key: string, label: string][] = [
 
 export const ACTIVITY_ACTIONS = Object.keys(ACTION_LABELS) as AuditAction[];
 
-// Zapisi koji traže pažnju admina (limit, blokirano otpremanje ili sumnjiv fajl); stranice ih boje drugačije
+// Zapisi koji traže pažnju admina (limit, blokirano otpremanje, sumnjiv fajl ili uklonjena dvostepena prijava);
+// stranice ih boje drugačije
 export const ATTENTION_ACTIONS: ReadonlySet<string> = new Set<AuditAction>([
   'limit_reached',
   'document_upload_blocked',
   'suspicious_content_flagged',
+  'mfa_removed',
 ]);
 
 export type ActivityRow = {
@@ -231,6 +234,10 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
       break;
     }
     case 'mfa_enrolled':
+      break;
+    case 'mfa_removed':
+      // Okidač u bazi ne zna ko je kliknuo (Auth server briše faktor bez JWT-a korisnika): zapis to ne sme da prećuti
+      details.push('Ko je uklonio faktor nije zabeleženo (korisnik sam ili vlasnik projekta)');
       break;
   }
 

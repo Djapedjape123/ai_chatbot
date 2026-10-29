@@ -112,6 +112,7 @@ test('advokat: ispravan UUID prolazi, sve ostalo je greška (i ponovljen paramet
 test('akcija: samo poznate vrste', () => {
   assert.equal(ok({ action: 'question_asked' }).action, 'question_asked');
   assert.equal(ok({ action: 'audit_exported' }).action, 'audit_exported');
+  assert.equal(ok({ action: 'mfa_removed' }).action, 'mfa_removed');
   for (const bad of ['nepoznato', 'constructor', '__proto__', 'question_asked,id.eq.x', 'QUESTION_ASKED']) {
     assert.match(error({ action: bad }), /vrst/i, bad);
   }

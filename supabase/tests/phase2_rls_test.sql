@@ -60,7 +60,7 @@ begin
   select count(*) into n from pg_policies
   where schemaname = 'public'
     and tablename in ('usage_ledger', 'audit_log', 'ip_rate_limit', 'profiles')
-    and cmd <> 'SELECT';
+    and cmd <> 'SELECT' and permissive = 'PERMISSIVE';  -- restriktivna polisa (2.5.11) samo sužava, ne daje pristup
   if n > 0 then raise exception 'CURENJE: % polisa za upis na tabelama Faze 2', n; end if;
 
   -- authenticated: samo SELECT na ledger/audit/profiles, ništa na ip_rate_limit

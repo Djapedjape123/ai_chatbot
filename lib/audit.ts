@@ -22,7 +22,9 @@ export type AuditAction =
   | 'settings_changed'
   | 'admin_viewed_user'
   | 'audit_exported'
-  | 'mfa_enrolled';
+  | 'mfa_enrolled'
+  // Upisuje okidač u bazi (2.5.11) kad se obriše potvrđen MFA faktor; aplikacija ga ne upisuje, samo prikazuje.
+  | 'mfa_removed';
 
 export type AuditActor = { id: string; email?: string | null };
 

@@ -31,7 +31,7 @@ const row = (action: string, extra: Partial<ActivityRow> = {}): ActivityRow => (
 const titles = new Map([[DOC, 'Zakon o radu']]);
 
 test('ACTIVITY_ACTIONS: svaka akcija ima opis na srpskom', () => {
-  assert.equal(ACTIVITY_ACTIONS.length, 16);
+  assert.equal(ACTIVITY_ACTIONS.length, 17);
   for (const a of ACTIVITY_ACTIONS) assert.ok(ACTION_LABELS[a].length > 0, a);
 });
 
@@ -213,7 +213,15 @@ test('describeActivity: nepoznata akcija i neispravan metadata ne ruše prikaz',
   }
 });
 
-test('ATTENTION_ACTIONS: samo radnje koje traže pažnju admina (limit, blokirano otpremanje, sumnjiv sadržaj)', () => {
-  assert.deepEqual([...ATTENTION_ACTIONS].sort(), ['document_upload_blocked', 'limit_reached', 'suspicious_content_flagged']);
+test('describeActivity: uklonjena dvostepena prijava kaže da izvršilac nije zabeležen', () => {
+  // okidač u bazi ne zna ko je kliknuo (Auth server briše faktor bez JWT-a korisnika), pa zapis to mora i da kaže
+  const d = describeActivity(row('mfa_removed', { resource_type: 'user', metadata: { factor_type: 'totp', status: 'verified' } }), titles);
+  assert.equal(d.label, 'Uklonjena dvostepena prijava');
+  assert.deepEqual(d.details, ['Ko je uklonio faktor nije zabeleženo (korisnik sam ili vlasnik projekta)']);
+  assert.equal(parseActivityQuery({ action: 'mfa_removed' }).action, 'mfa_removed');
+});
+
+test('ATTENTION_ACTIONS: samo radnje koje traže pažnju admina (limit, blokirano otpremanje, sumnjiv sadržaj, uklonjen MFA)', () => {
+  assert.deepEqual([...ATTENTION_ACTIONS].sort(), ['document_upload_blocked', 'limit_reached', 'mfa_removed', 'suspicious_content_flagged']);
   for (const a of ATTENTION_ACTIONS) assert.ok(ACTIVITY_ACTIONS.includes(a as (typeof ACTIVITY_ACTIONS)[number]), a);
 });
