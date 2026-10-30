@@ -197,7 +197,7 @@ Detalji: `docs/admin-panel-plan.md`, „Rezultat 2.5.10". **Faza 2.5 u CLAUDE.md
      curl -s -X POST "$URL/rest/v1/rpc/admin_list_users" -H "apikey: $ANON" -H "Authorization: Bearer <access_token iz prvog odgovora>" -H "Content-Type: application/json" -d '{}'
      ```
      Drugi odgovor mora da sadrži `42501`.
-   - [ ] 3. Poziv novog advokata (zavisi od B3, B4, B8, B9): odeljak 2, „2.5.6 Advokati", tačka 5.6.
+   - [x] 3. Poziv novog advokata (zavisi od B3, B4, B8, B9): odeljak 2, „2.5.6 Advokati", tačka 5.6. **Potvrđeno 2026-10-30** (log: invite → verify sa servera → PUT user; nalog `lawyer` sa lozinkom). Reset lozinke posle B8 u logu nije viđen.
    - [ ] 4. Blokada: odeljak 2, „2.5.6 Advokati", tačka 5.5.
    - [ ] 5. Podešavanja: limit 2 pa 429 na trećoj poruci, **vrati na 100**: odeljak 2, „Tvoj deo za 2.5.7 i 2.5.8", tačka 2.5.
    - [ ] 6. CSV u Excel-u: odeljak 2, „Tvoj deo za 2.5.7 i 2.5.8", tačka 2.3.
@@ -281,12 +281,25 @@ Pročitaj redom: CLAUDE.md, AGENTS.md, docs/next-steps.md, docs/admin-panel-plan
 O PROJEKTU
 Pravni AI asistent (RAG) za advokatske kancelarije, B2B: Next.js 16 + Supabase (Postgres, pgvector, RLS) + Voyage AI + Claude, na Vercelu (produkcija: https://ai-chatbot-2qmj.vercel.app). Cilj je zero-trust i zaštita poverljivosti klijenata (NDA). Faze 1 i 2 su zatvorene. Faza 2.5 (admin panel) je skoro gotova. Sledi Faza 3 (bezbednost fajlova), pa Faza 4 (isporuka kancelariji, poseban Vercel + Supabase projekat po kancelariji).
 
-STANJE (kraj prethodnog četa, 2026-10-29)
-- Faza 2.5: urađeni su 2.5.1 do 2.5.11, ali je u CLAUDE.md i dalje [ ] jer ručne tačke 1 do 6 iz „Rezultat 2.5.10" nisu potvrđene (osim ako Dopuna kaže drugačije). 2.5.1 do 2.5.9 su commit-ovani (poslednji: ad83132); 2.5.11 je vlasnik javio da push-uje (hash u Dopuni).
-- 2.5.11 (tvrdi RLS): migracija 20261029110000_phase2511_hard_rls.sql JE primenjena na Supabase-u (baza 2026-10-29: funkcije postoje, 6 restriktivnih polisa, okidač on_mfa_factor_removed postoji). Vlasnik je javio „sve prolazi" za SQL testove (ispis nisam video). NIJE viđeno: okidač sa pravim Auth serverom (mfa_removed_zapisi = 0), C6 i C8 sa pravim tokenima, Advisors posle migracije, plan izvršavanja na pravoj bazi. Lokalno (PGlite, node tools/verify/run-sql-tests.mjs): 5/5 SQL testova, 38 od 39 mutacija uhvaćeno + 1 ekvivalentna; npm test 341/341.
-- NOVI NALAZ (Supabase log): pozvani nalog je potvrdio mejl, ali je kliknut PODRAZUMEVANI Supabase link (GET /auth/v1/verify?token=…&type=invite&redirect_to=<produkcija>), ne naš /auth/confirm?token_hash=…. Znači šablon „Invite user" (B8, tekst u docs/email-templates.md) NIJE bio primenjen, nalog nikad nije stigao na /set-password (nema PUT /auth/v1/user), pa je poziv advokata do kraja NEPROVEREN.
-- Chat na produkciji NIJE potvrđen: poslednji red u usage_ledger je 2026-10-28 14:57:31, a od tada su se promenili /api/chat, requireUser, limiti i RLS. Neviđeno na produkciji: blokada, CSV izvoz, promena podešavanja (sva tri 0 zapisa u audit_log), meni iz 2.5.9, reset lozinke za nalog sa MFA (Supabase možda traži aal2 za promenu lozinke, vidi „Poznato, za 2.5.4").
-- Viđeno na produkciji: MFA (QR i kod), /admin pregled kao admin sa aal2, pregled naloga (admin_viewed_user 2), akcija poziva (user_invited).
+NAPOMENA 2026-10-30 (kasnije istog dana): FAZA 2.5 JE ZATVORENA u CLAUDE.md. Reset lozinke je potvrđen u logu, i za nalog sa MFA. Zadaci 1 do 3 ispod otpadaju, osim četiri stavke koje se prenose (CLAUDE.md, „Zatvaranje" u tački Faze 2.5). Rad na Fazi 3 je počeo; prompt se menja na kraju tog četa.
+
+STANJE (kraj prethodnog četa, 2026-10-30; proverio Claude u bazi i Supabase logu, ne po sećanju)
+- Kod: commit-ovano do 903c9f1 („mejl slanje"). Necommit-ovano na main: CLAUDE.md i docs/next-steps.md (upis ishoda poziva i ovaj prompt). Faza 2.5 je i dalje [ ] u CLAUDE.md.
+- 2.5.11 (tvrdi RLS) je primenjen: 6 restriktivnih polisa i okidač on_mfa_factor_removed postoje. Vlasnik je javio da SQL testovi prolaze (ispis nisam video).
+- POTVRĐENO NA PRODUKCIJI (baza i log):
+  - Chat posle svih izmena 2.5: usage_ledger red 2026-10-29 18:41 je settled (818 ulaznih, 261 izlaznih tokena), a hit_ip_rate_limit, reserve_usage, match_document_chunks i close_usage su vratili 200.
+  - Poziv advokata do kraja, 2026-10-30, posle B4 (sopstveni SMTP) i B8 (šabloni): POST /auth/v1/invite 200 → POST /auth/v1/verify 200 sa servera (naš /auth/confirm, a ne podrazumevani GET ?token=) → PUT /auth/v1/user 200. Nalog ima lozinku, prijavu i ulogu lawyer, a user_invited je u audit logu. Prethodni pokušaj poziva u 17:33 vratio je 422 (verovatno adresa koja već ima nalog; poruka u formi nije viđena).
+  - MFA (QR i kod), /admin kao admin sa aal2, pregled naloga (admin_viewed_user 11).
+  - Blokada i odblokada: admin_set_disabled 2 puta 204, 2 zapisa user_disabled/user_enabled, sada je 0 blokiranih. Da blokiran nalog NE MOŽE da se prijavi i dobija 403 NIJE viđeno.
+  - CSV izvoz: audit_exported 1. Izgled u Excel-u nije javljen.
+- NIJE POTVRĐENO:
+  - Promena podešavanja: settings_changed 0, a office_settings je i dalje 100/20/1.000.000/20.000.000.
+  - Reset lozinke posle B8: u logu nema POST /auth/v1/recover. Vlasnik je javio da radi, ali to se ne vidi.
+  - „Isti link drugi put" (nema drugog verify sa greškom) i reset za nalog sa MFA (Supabase možda traži aal2, vidi „Poznato, za 2.5.4").
+  - Okidač mfa_removed (0 zapisa), C6 i C8 sa pravim tokenima, Advisors posle 2.5.11.
+  - Ručne tačke 1 (admin bez koda ne ulazi), 2 (advokat dobija 404 i 42501) i meni iz 2.5.9.
+  - Dashboard B2 (registracija OFF), B5 (Rate Limits), B7 (JWT expiry) i B9 (lozinka 12).
+- Baza: 4 korisnika, 1 admin.
 - ODLUKE vlasnika: MFA ostaje opcion za advokate (opcija (a)); restriktivne polise na 6 tabela, NE na profiles; okidač beleži samo POTVRĐEN faktor i ne zaustavlja uklanjanje faktora kad upis audita padne; okidačka funkcija je u šemi private (izlaz ako okidač ne radi sa pravim Auth serverom: drop trigger i premestiti funkciju u public).
 - Alati: tools/verify (probe aplikacije na pravom next start sa lažnim Supabase-om, SQL harness na PGlite-u, runner za mutacije; npm install u tools/verify).
 
@@ -303,28 +316,29 @@ KORAK 0, pre ikakvog koda (veruj bazi, ne meni): preko Supabase MCP-a (read-only
          (select count(*) from pg_trigger where tgname = 'on_mfa_factor_removed' and not tgisinternal) as okidac,
          (select to_jsonb(s) - 'updated_by' from public.office_settings s) as podesavanja;
 i (bez email adresa): select u.invited_at, u.email_confirmed_at, u.last_sign_in_at, (u.encrypted_password is not null and u.encrypted_password <> '') as ima_lozinku, p.role, p.disabled_at, (select count(*) from auth.mfa_factors f where f.user_id = u.id and f.status = 'verified') as faktori from auth.users u left join public.profiles p on p.id = u.id order by u.created_at;
-Zatim git log i git status. Zatim query_logs (source 'edge_logs', poslednja 24 sata): (a) grupisano po log_attributes['request.path'], metodi i statusu, traži POST /rest/v1/rpc/reserve_usage, PUT /auth/v1/user, rpc/admin_update_settings, rpc/admin_set_disabled, DELETE /auth/v1/factors/*; (b) za GET i POST /auth/v1/verify ispiši request.search da vidiš KOJI link je kliknut (podrazumevani ?token=… ili naš token_hash).
-Javi mi u par redova šta je potvrđeno, a šta nije.
-- Ako je poslednji_chat_red i dalje 2026-10-28 14:57:31 (ili stariji), chat NIJE potvrđen: reci mi da pošaljem jednu poruku i proveri novi red. Ako chat vrati grešku (401 mfa_required, 403, 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
+Zatim git log i git status. Zatim query_logs (source 'edge_logs', poslednja 24 sata): (a) grupisano po log_attributes['request.path'], metodi i statusu, traži POST /auth/v1/recover, POST /auth/v1/verify (i status: 4xx = iskorišćen link), PUT /auth/v1/user, rpc/admin_update_settings, rpc/admin_set_disabled, DELETE /auth/v1/factors/*, POST /auth/v1/token sa statusom 400 (blokiran nalog); (b) za GET /auth/v1/verify ispiši request.search: podrazumevani link (?token=…) znači da šablon nije primenjen. Logovi pokrivaju najviše 24 sata, pa ono što je starije proveravaj u bazi.
+Javi mi u par redova šta je NOVO potvrđeno u odnosu na STANJE, a šta i dalje nije.
+- Ako je poslednji_chat_red noviji od 2026-10-29 18:41, pogledaj da li je settled. Ako chat vrati grešku (401 mfa_required, 403, 503), to je prioritet nad svim ostalim (superpowers:systematic-debugging).
 - Ono što ne vidiš iz baze (izgled u browseru, stiže li mejl, Excel) pitaj me samo ako nije popunjeno ispod. Sve što ovde ne piše kao urađeno smatraj neurađenim, uključujući Dashboard stavke B2 do B9 iz next-steps.md.
 
 DOPUNA OD MENE (popunjavam ono što znam; prazno = nisam probao)
-- Hash commit-a 2.5.11 i da li je Production „Ready": ____
-- Pet SQL testova na pravoj bazi (ispis ako neki puca): ____   Advisors posle migracije: ____
+- Hash poslednjeg commit-a i da li je Production „Ready": ____
+- SMTP: koji servis (Gmail ili Resend sa domenom) i adresa pošiljaoca: ____
+- Pet SQL testova na pravoj bazi (ispis ako neki puca): ____   Advisors posle 2.5.11: ____
 - Proba okidača (uključi pa ukloni probni MFA faktor, nalog bez podataka; zapis mfa_removed): ____
 - C6 (aal1 token vraća [] za audit_log, aal2 vraća zapise): ____   C8 (blokiran nalog sa važećim tokenom vraća [] za chats, profil čitljiv): ____
-- Chat poruka na produkciji poslata (odgovor stigao, bez greške): ____
-- Dashboard: B2 registracija OFF, B3 URL Configuration, B4 SMTP, B8 email šabloni (Invite user i Reset password) primenjeni, B9 minimalna lozinka 12: ____
-- Poziv advokata posle B8: mejl, link vodi na „Postavite lozinku", lozinka postavljena, prijava radi: ____
+- Dashboard: B2 registracija OFF, B5 Rate Limits, B7 JWT expiry, B9 minimalna lozinka 12: ____
+- Reset lozinke posle B8 (/forgot-password → mejl sa našim linkom → nova lozinka → chat): ____   Isti link drugi put daje „Link nije važeći": ____
 - Reset lozinke za nalog sa MFA (/forgot-password → mejl → kod → nova lozinka): ____
+- Blokiran advokat ne može da se prijavi (poruka koju vidi): ____
 - Ručne tačke iz „Rezultat 2.5.10": admin bez koda ne ulazi u /admin; advokat dobija 404 i 42501; podešavanja (limit 2 pa 429, vraćeno na 100); CSV u Excel-u (slova i 11 kolona razdvojeno, ili sve u jednoj koloni); meni iz 2.5.9 (admin vidi „Admin panel", advokat ne, telefon): ____
 - Env granice na Vercel-u (DAILY_MESSAGE_LIMIT i ostale; vrednosti): ____
 - Ostalo: ____
 
 ZADATAK OVOG ČETA (redom; grane zavise od Dopune i Koraka 0)
 1. 2.5.11 na pravoj bazi: upiši ishod (okidač, C6, C7, C8, Advisors) u docs/admin-panel-plan.md i CLAUDE.md. Ako okidač ne radi ili neki SQL test puca: superpowers:systematic-debugging, ispravka test-prvo kroz SQL harness (izlaz za okidač: premesti private.audit_mfa_removed() u public, ponovi harness i mutacije; vlasnik primenjuje novu migraciju). Ako ništa od toga nije probano, samo me podseti i ne radi ništa novo oko migracije.
-2. Poziv advokata: ako B8 nije urađen, ne piši kod; podseti me na docs/email-templates.md i objasni nalaz. Ako je urađen, u logu proveri tok (GET /auth/confirm na našem sajtu, POST /auth/v1/verify, PUT /auth/v1/user) i upiši ishod. Ako tok puca, superpowers:systematic-debugging, ispravka test-prvo (lib/auth-confirm.ts, app/auth/confirm/route.ts, probe u tools/verify). Isto za reset lozinke naloga sa MFA.
-3. Zatvaranje Faze 2.5: kad su ručne tačke 1 do 6 potvrđene, Faza 2.5 postaje [x] u CLAUDE.md, uz kratak spisak šta je i kako potvrđeno. Ako nisu, ostaje [ ] sa tačnim spiskom šta fali.
+2. Reset lozinke (poziv je već potvrđen 2026-10-30, ne proveravaj ga ponovo): u logu traži POST /auth/v1/recover → POST /auth/v1/verify 200 → PUT /auth/v1/user, pa drugi verify sa 4xx za isti link. Ako u Dopuni piše da je probano, a u logu (24 sata) toga nema, reci mi da probam ponovo i javim tačno vreme. Za nalog sa MFA: ako PUT /auth/v1/user pada zbog aal2, superpowers:systematic-debugging, ispravka test-prvo (app/reset-password, lib/mfa-gate.ts, probe u tools/verify).
+3. Zatvaranje Faze 2.5: za svaku stavku iz „NIJE POTVRĐENO" koju Dopuna ne pokriva daj mi kratak korak (šta da kliknem i šta da javim), pa je proveri u bazi ili logu. Kad su potvrđene ručne tačke 1 do 6, reset i blokirana prijava, Faza 2.5 postaje [x] u CLAUDE.md, uz kratak spisak šta je i kako potvrđeno. Dashboard stavke B5, B7 i B9 ne blokiraju [x], ali idu u spisak za Fazu 4 (onboarding). Ako nešto fali, Faza 2.5 ostaje [ ] sa tačnim spiskom.
 4. FAZA 3 (bezbednost PDF i Word fajlova), SAMO PLAN, BEZ KODA: postavi mi PRVO PITANJE (ispod) i sačekaj odgovor. Posle odgovora postavi preostala pitanja (najviše 6, jedno po jedno ako zavise od prethodnog), pa upiši dogovoren plan u docs/file-security-plan.md i u CLAUDE.md („FAZA 3"), isto kao za Fazu 2 i 2.5. Kod tek posle potvrde plana. Ne čekaj na tačke 2 i 3 da bi počeo pitanja.
 
    Činjenice o današnjem stanju (proverene čitanjem koda 2026-10-29, ne istražuj ponovo osim ako sumnjaš):
