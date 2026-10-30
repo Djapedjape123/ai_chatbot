@@ -38,7 +38,7 @@ Promenljive `{{ .SiteURL }}` i `{{ .TokenHash }}` su Supabase-ove i ostaju tačn
 ## Provera posle izmene
 
 1. **Reset:** `/forgot-password` → mejl stiže → link otvara „Nova lozinka" (traži najmanje 12 znakova) → posle čuvanja si u `/chat`.
-2. **Poziv:** Dashboard → Authentication → Users → „Invite user" (do 2.5.6 nema dugmeta u aplikaciji) → link otvara „Postavite lozinku" → posle čuvanja si u `/chat`. U SQL Editoru: `select email, role from public.profiles where email = '…';` mora da vrati red sa ulogom `lawyer`.
+2. **Poziv:** `/admin/users` → forma za poziv, **na adresu koja još nema nalog** → link otvara „Postavite lozinku" → posle čuvanja si u `/chat`. U SQL Editoru: `select email, role from public.profiles where email = '…';` mora da vrati red sa ulogom `lawyer`. Pre izmene šablona jedan probni poziv (2026-10-29) je otvoren preko podrazumevanog Supabase linka. Taj nalog je potvrđen, ali nema lozinku, pa „Pošalji ponovo" za njega ne radi. Za probu uzmi novu adresu, a taj nalog blokiraj ili mu postavi lozinku preko `/forgot-password`.
 3. **Isti link drugi put:** mora da otvori „Link nije važeći" (jednokratan je).
 
 ## Poznati rizik: mejl skeneri
