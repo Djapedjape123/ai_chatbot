@@ -2,7 +2,7 @@
 
 Radi vlasnik projekta. **Redosled je bitan: prvo deploy koda iz 2.5.4 na produkciju, TEK ONDA menjaš šablone.** Novi linkovi vode na `/auth/confirm`, koje do tada ne postoji, pa bi reset lozinke prestao da radi.
 
-Preduslovi (`docs/next-steps.md`, odeljak B): Site URL i Redirect URLs (B3) i sopstveni SMTP (B4). Sa podrazumevanim SMTP-om Supabase šalje samo članovima tvoje Supabase organizacije (greška `email_address_not_authorized`), pa pozivnica na tuđu adresu ne stiže.
+Preduslovi (`docs/next-steps.md`, odeljak B): Site URL i Redirect URLs (B3) i sopstveni SMTP (B4). Sa podrazumevanim SMTP-om Supabase šalje samo članovima tvoje Supabase organizacije (greška `email_address_not_authorized`), pa pozivnica na tuđu adresu ne stiže. **Dashboard ne dozvoljava izmenu šablona dok nije uključen sopstveni SMTP** (poruka „Set up custom SMTP to edit templates"), pa B4 ide pre ovog fajla.
 
 Promenljive `{{ .SiteURL }}` i `{{ .TokenHash }}` su Supabase-ove i ostaju tačno ovako. Ne dodaj `{{ .ConfirmationURL }}`: taj link ide drugim tokom (PKCE) i ne radi kad se mejl otvori u drugom pregledaču ili na drugom uređaju, a pozvan advokat upravo to radi.
 
