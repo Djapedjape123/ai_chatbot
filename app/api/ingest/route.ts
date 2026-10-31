@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { extractText, getDocumentProxy } from 'unpdf';
 import { requireUser } from '@/lib/require-user';
 import { apiError } from '@/lib/api-error';
 import { ingestFormInput, ingestFormSchema } from '@/lib/validation';
@@ -10,6 +9,9 @@ import { enforceIpBurst, reserveUsage, settleUsage, releaseUsage, type ActualTok
 import { logAudit } from '@/lib/audit';
 import { getClientIp } from '@/lib/client-ip';
 import { parseVoyageBatchResponse } from '@/lib/claude';
+import { detectFileType } from '@/lib/file-type';
+import { readFileInWorker } from '@/lib/file-read';
+import { describeRejection, type UploadRejection } from '@/lib/upload-rejection';
 import {
   INGEST_BATCH_SIZE,
   INGEST_CHUNK_OVERLAP,
@@ -20,7 +22,7 @@ import {
   suspiciousUploadMessage,
 } from '@/lib/ingest';
 
-// Parsiranje PDF-a + do 17 poziva Voyage-a (po 15s timeout) ne staje u podrazumevani limit funkcije
+// Čitanje fajla (do 20 s) + do 17 poziva Voyage-a (po 15s timeout) ne staje u podrazumevani limit funkcije
 export const maxDuration = 60;
 
 // Greška sa porukom koja sme da stigne do korisnika (sve ostalo dobija opštu poruku)
@@ -30,12 +32,6 @@ class IngestError extends Error {
     super(message);
     this.code = code;
   }
-}
-
-async function readPdfText(file: File): Promise<string> {
-  const pdf = await getDocumentProxy(new Uint8Array(await file.arrayBuffer()));
-  const { text } = await extractText(pdf, { mergePages: true });
-  return text;
 }
 
 export async function POST(req: Request) {
@@ -60,7 +56,8 @@ export async function POST(req: Request) {
     if (!user) return errorResponse!;
     const actor = { id: user.id, email: user.email };
 
-    // 0.5 Validacija (zod): fajl je obavezan, ne prazan, najviše 4MB i PDF; acknowledge je 'true' ili 'false'
+    // 0.5 Validacija (zod): fajl je obavezan, ne prazan i najviše 4MB; acknowledge je 'true' ili 'false'. Tip se ne
+    //     proverava ovde: ime i MIME dolaze od korisnika, pa tip određuje sadržaj fajla (korak 1).
     let formData: FormData;
     try {
       formData = await req.formData();
@@ -76,19 +73,38 @@ export async function POST(req: Request) {
     // Ime fajla bira korisnik, a ulazi u kontekst za AI: čistimo ga pre upisa
     const title = sanitizeTitle(file.name);
 
-    // 1. Izvlačenje teksta iz PDF-a. Oštećen fajl je greška korisnika (400), ne servera.
-    let rawText: string;
-    try {
-      rawText = await readPdfText(file);
-    } catch (parseError) {
-      console.error('PDF Parse Error:', parseError);
-      await logAudit(actor, 'document_upload_blocked', { ip, metadata: { reason: 'unreadable_pdf', size_bytes: file.size } });
-      return apiError('Fajl nije ispravan PDF ili je oštećen.', 400, 'invalid_pdf');
-    }
+    // 1. Tip fajla po SADRŽAJU (magični bajtovi), pa čitanje u worker niti sa ograničenjem vremena: provera
+    //    aktivnog sadržaja i zip bombi, granice (strane, veličina) i izvlačenje teksta. Odbijanje je greška korisnika
+    //    (400) i ne troši ledger (rezervacija je tek posle); razlog ide u audit, bez naziva fajla i sadržaja.
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const kind = detectFileType(bytes);
+    const reject = async (rejection: UploadRejection, fileKind?: 'pdf' | 'docx') => {
+      const d = describeRejection(rejection);
+      if (d.audit) {
+        await logAudit(actor, 'document_upload_blocked', {
+          ip,
+          metadata: { ...d.audit, ...(fileKind ? { file_kind: fileKind } : {}), size_bytes: file.size },
+        });
+      } else {
+        console.error('Ingest: čitanje fajla nije uspelo:', rejection.reason);
+      }
+      return apiError(d.message, d.status, d.code);
+    };
 
-    if (!rawText || rawText.trim().length === 0) {
-      await logAudit(actor, 'document_upload_blocked', { ip, metadata: { reason: 'no_text', size_bytes: file.size } });
-      return apiError('PDF ne sadrži tekst ili je skenirana slika (potreban je OCR).', 400, 'no_text');
+    if (kind === 'unknown') return reject({ ok: false, reason: 'unsupported_type' });
+    if (kind === 'legacy_doc' || kind === 'encrypted_office') return reject({ ok: false, reason: kind });
+
+    const read = await readFileInWorker({ kind, bytes });
+    if (!read.ok) return reject(read, kind);
+    const rawText = read.text;
+
+    if (rawText.trim().length === 0) {
+      await logAudit(actor, 'document_upload_blocked', { ip, metadata: { reason: 'no_text', file_kind: kind, size_bytes: file.size } });
+      return apiError(
+        kind === 'pdf' ? 'PDF ne sadrži tekst ili je skenirana slika (potreban je OCR).' : 'Word dokument ne sadrži tekst.',
+        400,
+        'no_text'
+      );
     }
 
     // 2. Pasusi. Zid za ogromne dokumente važi PRE upisa, pa nema šta da se poništava.
@@ -101,7 +117,7 @@ export async function POST(req: Request) {
     if (chunkTexts.length > INGEST_MAX_CHUNKS) {
       await logAudit(actor, 'document_upload_blocked', {
         ip,
-        metadata: { reason: 'too_many_chunks', chunks: chunkTexts.length, size_bytes: file.size },
+        metadata: { reason: 'too_many_chunks', chunks: chunkTexts.length, file_kind: kind, size_bytes: file.size },
       });
       return apiError(
         `Dokument je prevelik za obradu. Ograničen je na ${INGEST_MAX_CHUNKS} pasusa, a ovaj ima ${chunkTexts.length}.`,
@@ -209,6 +225,7 @@ export async function POST(req: Request) {
         ip,
         metadata: {
           chunks: chunkTexts.length,
+          file_kind: kind,
           size_bytes: file.size,
           embed_tokens: spent.embed ?? 0,
           suspicious: suspicious.suspicious,

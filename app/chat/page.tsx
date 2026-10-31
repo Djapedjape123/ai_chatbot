@@ -5,7 +5,7 @@ import PdfUploader from '@/app/components/PdfUploader';
 import Sidebar from '@/app/components/Sidebar';
 import { readIsAdmin } from '@/lib/me';
 import { exportSingleMessageToWord, exportFullChatToWord } from '@/lib/exportWord';
-import * as mammoth from 'mammoth';
+import { MAX_FILE_SIZE } from '@/lib/ingest';
 
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
@@ -126,16 +126,17 @@ export default function Home() {
     }
   }
 
-  function showToast(msg: string) {
+  function showToast(msg: string, ms = 4000) {
     setToast(msg);
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), ms);
   }
 
   async function handleFileAttachment(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = ''; // da se isti fajl može ponovo izabrati
     if (!file) return;
 
-    if (!file.name.endsWith('.docx')) {
+    if (!file.name.toLowerCase().endsWith('.docx')) {
       showToast('Za sada je moguća direktna prepravka samo .docx fajlova.');
       return;
     }
@@ -145,31 +146,33 @@ export default function Home() {
       return;
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      showToast(`Fajl je prevelik. Maksimalna dozvoljena veličina je ${MAX_FILE_SIZE / (1024 * 1024)}MB.`);
+      return;
+    }
+
     setAttachedFileName(file.name);
     showToast('Učitavam fajl...');
-    
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const arrayBuffer = event.target?.result as ArrayBuffer;
-        if (arrayBuffer) {
-          const result = await mammoth.extractRawText({ arrayBuffer });
-          setAttachedFileText(result.value);
-          showToast('Fajl je uspešno učitan i spreman!');
-        }
-      } catch (error) {
-        showToast('Fajl je oštećen ili nije validan Word dokument.');
+
+    try {
+      // Fajl čita server (provera aktivnog sadržaja i zip bombi, ograničeno vreme): pregledač ga više ne parsira
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/attachments/docx', { method: 'POST', body: formData });
+      // Odgovor ne mora da bude JSON (npr. 413 sa Vercel-a pre nego što zahtev stigne do rute)
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || typeof data?.text !== 'string') {
+        showToast(data?.error || (res.status === 413 ? 'Fajl je prevelik.' : 'Fajl nije moguće učitati.'), 12000);
         removeAttachment();
+        return;
       }
-    };
-
-    reader.onerror = () => {
-      showToast('Greška pri čitanju fajla sa računara.');
+      setAttachedFileText(data.text);
+      showToast('Fajl je uspešno učitan i spreman!');
+    } catch {
+      showToast('Greška pri povezivanju sa serverom.');
       removeAttachment();
-    };
-
-    reader.readAsArrayBuffer(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   }
 
   function removeAttachment() {

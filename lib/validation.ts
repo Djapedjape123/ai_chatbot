@@ -27,18 +27,19 @@ export const chatRequestSchema = z.object(
 // Limit veličine fajla je u lib/ingest.ts (deli ga i klijent)
 export { MAX_FILE_SIZE };
 
-// FormData za POST /api/ingest. acknowledge=true šalje korisnik koji je video upozorenje
+// FormData za POST /api/ingest. Tip fajla (PDF ili Word) se NE proverava ovde: ime i MIME dolaze od korisnika,
+// a zod ne čita sadržaj. Tip određuje ruta po magičnim bajtovima (lib/file-type.ts).
+// acknowledge=true šalje korisnik koji je video upozorenje
 // o sumnjivom sadržaju i ipak želi da nastavi (2.4).
+// Isto polje za dokument i za prilog: obavezno, ne prazno, najviše 4MB
+const uploadedFile = z
+  .instanceof(File, { error: 'Niste poslali fajl.' })
+  .refine((f) => f.size > 0, 'Fajl je prazan (0 bajtova).')
+  .refine((f) => f.size <= MAX_FILE_SIZE, 'Fajl je prevelik. Maksimalna dozvoljena veličina je 4MB.');
+
 export const ingestFormSchema = z.object(
   {
-    file: z
-      .instanceof(File, { error: 'Niste poslali PDF fajl.' })
-      .refine((f) => f.size > 0, 'Fajl je prazan (0 bajtova).')
-      .refine((f) => f.size <= MAX_FILE_SIZE, 'Fajl je prevelik. Maksimalna dozvoljena veličina je 4MB.')
-      .refine(
-        (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
-        'Dozvoljen je isključivo PDF format fajla.'
-      ),
+    file: uploadedFile,
     acknowledge: z
       .enum(['true', 'false'])
       .optional()
@@ -49,6 +50,13 @@ export const ingestFormSchema = z.object(
 
 export function ingestFormInput(formData: FormData) {
   return { file: formData.get('file') ?? undefined, acknowledge: formData.get('acknowledge') ?? undefined };
+}
+
+// FormData za POST /api/attachments/docx (Word prilog uz pitanje, Faza 3). Samo fajl; tip određuje ruta po sadržaju.
+export const attachmentFormSchema = z.object({ file: uploadedFile }, { error: invalidBody });
+
+export function attachmentFormInput(formData: FormData) {
+  return { file: formData.get('file') ?? undefined };
 }
 
 // --- Admin panel (2.5) ---

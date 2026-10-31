@@ -6,6 +6,8 @@ import {
   MAX_QUERY_LENGTH,
   ingestFormSchema,
   ingestFormInput,
+  attachmentFormSchema,
+  attachmentFormInput,
   MAX_FILE_SIZE,
   inviteSchema,
   inviteFormInput,
@@ -81,13 +83,14 @@ test('ingestForm: ispravan PDF prolazi, acknowledge je podrazumevano false', () 
   assert.equal(ingestFormSchema.safeParse({ file: pdf('%PDF-1.7'), acknowledge: 'true' }).data?.acknowledge, true);
 });
 
-test('ingestForm: fajl je obavezan, ne prazan, najviše 4MB i PDF', () => {
+test('ingestForm: fajl je obavezan, ne prazan i najviše 4MB; tip se ne proverava po imenu ni MIME-u (to radi ruta po sadržaju)', () => {
   const msg = (input: unknown) => ingestFormSchema.safeParse(input).error?.issues[0].message;
-  assert.equal(msg({}), 'Niste poslali PDF fajl.');
-  assert.equal(msg({ file: 'tekst' }), 'Niste poslali PDF fajl.');
+  assert.equal(msg({}), 'Niste poslali fajl.');
+  assert.equal(msg({ file: 'tekst' }), 'Niste poslali fajl.');
   assert.equal(msg({ file: pdf('') }), 'Fajl je prazan (0 bajtova).');
   assert.match(msg({ file: pdf(new Uint8Array(MAX_FILE_SIZE + 1)) })!, /4MB/);
-  assert.equal(msg({ file: pdf('x', 'skripta.exe', 'application/octet-stream') }), 'Dozvoljen je isključivo PDF format fajla.');
+  assert.equal(ingestFormSchema.safeParse({ file: pdf('x', 'skripta.exe', 'application/octet-stream') }).success, true);
+  assert.equal(ingestFormSchema.safeParse({ file: pdf('x', 'ugovor.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') }).success, true);
   assert.equal(ingestFormSchema.safeParse({ file: pdf('x'), acknowledge: 'da' }).success, false);
 });
 
@@ -204,4 +207,27 @@ test('inviteFormInput: čita email i ime iz FormData, a nedostajuće polje daje 
   const bad = inviteSchema.safeParse(inviteFormInput(noName));
   assert.equal(bad.success, false);
   assert.equal(bad.error?.issues[0].message, 'Unesite ime i prezime.');
+});
+
+// --- Prilog uz pitanje (Faza 3): samo fajl, bez acknowledge ---
+
+test('attachmentForm: ispravan fajl prolazi, nepoznata polja se odbacuju', () => {
+  const r = attachmentFormSchema.safeParse({ file: pdf('x', 'ugovor.docx'), acknowledge: 'true' });
+  assert.equal(r.success, true);
+  assert.deepEqual(Object.keys(r.data ?? {}), ['file']);
+});
+
+test('attachmentForm: fajl je obavezan, ne prazan i najviše 4MB (iste poruke kao za dokument)', () => {
+  const msg = (input: unknown) => attachmentFormSchema.safeParse(input).error?.issues[0].message;
+  assert.equal(msg({}), 'Niste poslali fajl.');
+  assert.equal(msg({ file: 'tekst' }), 'Niste poslali fajl.');
+  assert.equal(msg({ file: pdf('') }), 'Fajl je prazan (0 bajtova).');
+  assert.match(msg({ file: pdf(new Uint8Array(MAX_FILE_SIZE + 1)) })!, /4MB/);
+});
+
+test('attachmentFormInput: čita fajl iz FormData', () => {
+  const fd = new FormData();
+  fd.set('file', pdf('x', 'prilog.docx'));
+  assert.equal(attachmentFormSchema.safeParse(attachmentFormInput(fd)).success, true);
+  assert.equal(attachmentFormSchema.safeParse(attachmentFormInput(new FormData())).success, false);
 });

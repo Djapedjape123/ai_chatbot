@@ -35,7 +35,7 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
 
   const handleUpload = async (acknowledge = false) => {
     if (!file) {
-      setStatus({ type: 'error', text: 'Molimo vas da prvo izaberete PDF fajl.' });
+      setStatus({ type: 'error', text: 'Molimo vas da prvo izaberete fajl.' });
       return;
     }
 
@@ -104,13 +104,13 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
         <div className="mb-6">
           <input
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={handleFileChange}
             ref={fileInputRef}
             disabled={loading} // Zaključavamo input dok se učitava
             className="w-full text-sm text-[#16263D] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#16263D]/10 file:text-[#16263D] hover:file:bg-[#16263D]/20 cursor-pointer transition"
           />
-          <p className="mt-2 text-xs text-[#16263D]/60">PDF sa tekstom, najviše {MAX_FILE_SIZE / (1024 * 1024)}MB.</p>
+          <p className="mt-2 text-xs text-[#16263D]/60">PDF ili Word (.docx) sa tekstom, najviše {MAX_FILE_SIZE / (1024 * 1024)}MB.</p>
         </div>
 
         {status.text && (
@@ -157,7 +157,7 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
                 disabled={loading || !file || status.type === 'success'}
                 className="px-4 py-2 text-sm bg-[#16263D] text-[#F7F3EC] rounded-md hover:bg-[#16263D]/90 disabled:opacity-50 transition flex items-center gap-2 shadow-sm"
               >
-                {loading ? <span className="animate-pulse">Indeksiranje...</span> : 'Sačuvaj PDF'}
+                {loading ? <span className="animate-pulse">Indeksiranje...</span> : 'Sačuvaj dokument'}
               </button>
             </>
           )}

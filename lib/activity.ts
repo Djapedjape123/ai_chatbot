@@ -1,4 +1,5 @@
 import type { AuditAction } from './audit.ts';
+import { ACTIVE_CONTENT_LABELS } from './active-content-labels.ts';
 import { PATTERN_LABELS } from './prompt-safety.ts';
 
 // Prikaz audit loga na stranici /activity. Čist kod bez server-only importa, da bi se mogao testirati (npm test).
@@ -111,7 +112,23 @@ const BLOCK_REASONS: Record<string, string> = {
   unreadable_pdf: 'PDF je oštećen ili nije ispravan',
   no_text: 'PDF nema tekst (verovatno je skeniran)',
   too_many_chunks: 'Dokument je prevelik za obradu',
+  // Faza 3 (bezbednost fajlova)
+  unsupported_type: 'Tip fajla nije podržan',
+  legacy_doc: 'Stari Word format (.doc)',
+  encrypted_pdf: 'PDF je zaštićen lozinkom',
+  encrypted_office: 'Word dokument je zaštićen lozinkom ili je u starom formatu',
+  active_content: 'Fajl sadrži aktivan sadržaj',
+  archive_bomb: 'Fajl je neobično velik ili složen kad se raspakuje',
+  too_many_pages: 'PDF ima previše strana',
+  parse_timeout: 'Obrada fajla je trajala predugo',
+  unreadable_docx: 'Word dokument je oštećen ili nije ispravan',
 };
+
+const FILE_KINDS: Record<string, string> = { pdf: 'PDF', docx: 'Word (.docx)' };
+
+// metadata je podatak iz baze: vrednost se traži samo među sopstvenim ključevima (ne i 'constructor', '__proto__')
+const lookup = (table: Record<string, string>, key: unknown): string | undefined =>
+  typeof key === 'string' && Object.hasOwn(table, key) ? table[key] : undefined;
 
 function limitText(kind: unknown, reason: unknown): string | null {
   if (reason === 'daily_count') return kind === 'ingest' ? 'Dnevni limit dokumenata' : kind === 'chat' ? 'Dnevni limit poruka' : null;
@@ -137,6 +154,10 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
     const size = count(meta.size_bytes);
     if (size !== null) details.push(`Veličina: ${formatSize(size)}`);
   };
+  const kindLine = () => {
+    const kind = lookup(FILE_KINDS, meta.file_kind);
+    if (kind) details.push(`Vrsta fajla: ${kind}`);
+  };
   const userLine = () => {
     if (row.resource_id) details.push(`Nalog: ${shortId(row.resource_id)}`);
   };
@@ -145,6 +166,7 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
   switch (action) {
     case 'document_uploaded': {
       documentLine();
+      kindLine();
       const chunks = count(meta.chunks);
       if (chunks !== null) details.push(`Pasusa: ${chunks}`);
       sizeLine();
@@ -152,8 +174,14 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
       break;
     }
     case 'document_upload_blocked': {
-      const reason = typeof meta.reason === 'string' ? BLOCK_REASONS[meta.reason] : undefined;
+      const reason = lookup(BLOCK_REASONS, meta.reason);
       if (reason) details.push(reason);
+      const finding = lookup(ACTIVE_CONTENT_LABELS, meta.finding);
+      if (finding) details.push(`Vrsta nalaza: ${finding}`);
+      const pages = count(meta.pages);
+      if (pages !== null) details.push(`Broj strana: ${pages}`);
+      kindLine();
+      if (meta.context === 'attachment') details.push('Prilog uz pitanje (nije dodat u bazu znanja)');
       sizeLine();
       break;
     }

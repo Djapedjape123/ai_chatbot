@@ -225,3 +225,65 @@ test('ATTENTION_ACTIONS: samo radnje koje traže pažnju admina (limit, blokiran
   assert.deepEqual([...ATTENTION_ACTIONS].sort(), ['document_upload_blocked', 'limit_reached', 'mfa_removed', 'suspicious_content_flagged']);
   for (const a of ATTENTION_ACTIONS) assert.ok(ACTIVITY_ACTIONS.includes(a as (typeof ACTIVITY_ACTIONS)[number]), a);
 });
+
+// --- Faza 3: razlozi odbijanja fajlova ---
+
+test('describeActivity: novi razlozi blokiranog otpremanja imaju opis na srpskom', () => {
+  const expected: Record<string, string> = {
+    unsupported_type: 'Tip fajla nije podržan',
+    legacy_doc: 'Stari Word format (.doc)',
+    encrypted_pdf: 'PDF je zaštićen lozinkom',
+    encrypted_office: 'Word dokument je zaštićen lozinkom ili je u starom formatu',
+    active_content: 'Fajl sadrži aktivan sadržaj',
+    archive_bomb: 'Fajl je neobično velik ili složen kad se raspakuje',
+    too_many_pages: 'PDF ima previše strana',
+    parse_timeout: 'Obrada fajla je trajala predugo',
+    unreadable_docx: 'Word dokument je oštećen ili nije ispravan',
+  };
+  for (const [reason, text] of Object.entries(expected)) {
+    const d = describeActivity(row('document_upload_blocked', { metadata: { reason } }), titles);
+    assert.equal(d.label, 'Blokirano otpremanje');
+    assert.equal(d.details[0], text, reason);
+  }
+});
+
+test('describeActivity: aktivan sadržaj navodi vrstu nalaza, vrstu fajla i veličinu (bez interne oznake)', () => {
+  const d = describeActivity(
+    row('document_upload_blocked', { metadata: { reason: 'active_content', finding: 'pdf_javascript', file_kind: 'pdf', size_bytes: 2048 } }),
+    titles
+  );
+  assert.deepEqual(d.details, ['Fajl sadrži aktivan sadržaj', 'Vrsta nalaza: JavaScript u PDF-u', 'Vrsta fajla: PDF', 'Veličina: 2,0 KB']);
+  assert.ok(!d.details.join(' ').includes('pdf_javascript'));
+});
+
+test('describeActivity: svi nalazi aktivnog sadržaja imaju opis, a Word makro se prepoznaje', () => {
+  const d = describeActivity(row('document_upload_blocked', { metadata: { reason: 'active_content', finding: 'docx_macro', file_kind: 'docx' } }), titles);
+  assert.deepEqual(d.details, ['Fajl sadrži aktivan sadržaj', 'Vrsta nalaza: makroi', 'Vrsta fajla: Word (.docx)']);
+});
+
+test('describeActivity: broj strana i prilog uz pitanje', () => {
+  const pages = describeActivity(row('document_upload_blocked', { metadata: { reason: 'too_many_pages', pages: 412 } }), titles);
+  assert.deepEqual(pages.details, ['PDF ima previše strana', 'Broj strana: 412']);
+  const attachment = describeActivity(row('document_upload_blocked', { metadata: { reason: 'encrypted_office', context: 'attachment' } }), titles);
+  assert.deepEqual(attachment.details, ['Word dokument je zaštićen lozinkom ili je u starom formatu', 'Prilog uz pitanje (nije dodat u bazu znanja)']);
+});
+
+test('describeActivity: nepouzdani metapodaci (nepoznat nalaz, vrsta, broj strana) se ignorišu bez izuzetka', () => {
+  const d = describeActivity(
+    row('document_upload_blocked', {
+      metadata: { reason: 'active_content', finding: 'drop table audit_log', file_kind: 'exe', pages: 'mnogo', context: 7 },
+    }),
+    titles
+  );
+  assert.deepEqual(d.details, ['Fajl sadrži aktivan sadržaj']);
+  const proto = describeActivity(row('document_upload_blocked', { metadata: { reason: 'constructor', finding: '__proto__', file_kind: 'toString' } }), titles);
+  assert.deepEqual(proto.details, []);
+});
+
+test('describeActivity: otpremljen Word dokument navodi vrstu fajla', () => {
+  const d = describeActivity(
+    row('document_uploaded', { resource_type: 'document', resource_id: DOC, metadata: { chunks: 3, size_bytes: 1024, file_kind: 'docx' } }),
+    titles
+  );
+  assert.deepEqual(d.details, ['Dokument: Zakon o radu', 'Vrsta fajla: Word (.docx)', 'Pasusa: 3', 'Veličina: 1,0 KB']);
+});
