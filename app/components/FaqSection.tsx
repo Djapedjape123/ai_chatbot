@@ -1,52 +1,59 @@
-'use client';
-
-import { useState } from 'react';
+// Odgovori o bezbednosti i o AI servisima pišu samo ono što je proverljivo. Pre izmene uskladiti sa
+// pregledom tokova podataka iz Faze 4 (docs/onboarding.md).
+const faqs = [
+  {
+    q: 'Da li moji dokumenti napuštaju sistem?',
+    a: 'Za pretragu i odgovor, delovi vaših dokumenata i pitanje šalju se AI servisima koji ih obrađuju (Claude kompanije Anthropic i Voyage AI). Pregled tokova podataka i uslova čuvanja dobijate pre potpisivanja ugovora.',
+  },
+  {
+    q: 'Može li asistent da izmisli zakon ili presudu?',
+    a: 'Svaki AI model može da pogreši, zato uz odgovor navodimo dokument iz kog je preuzet, da biste ga proverili. Kada podatka nema u vašim dokumentima, asistent to izričito kaže pre nego što odgovori iz opšteg znanja. Odgovor je pomoć u radu, a ne zamena za proveru pravnika.',
+  },
+  {
+    q: 'Ko može da otvori nalog?',
+    a: 'Samo administrator vaše kancelarije. Javne registracije nema, pa niko van kancelarije ne može sam da napravi nalog.',
+  },
+  {
+    q: 'U kom formatu dobijam ugovore i akte?',
+    a: 'Odgovore i generisane ugovore preuzimate kao Word (.docx) dokument sa standardnim pravničkim formatiranjem: Times New Roman, 12 pt, obostrano poravnanje.',
+  },
+  {
+    q: 'Koje fajlove mogu da ubacim?',
+    a: 'Tekstualne PDF dokumente i Microsoft Word (.docx) fajlove. Skenirani papiri koji nemaju tekst za sada nisu podržani.',
+  },
+];
 
 export default function FaqSection() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-
-  const faqs = [
-    {
-      q: 'Da li su moji dokumenti i ugovori bezbedni?',
-      a: 'Apsolutno. Svi vaši dokumenti se enkriptuju i čuvaju u izolovanom okruženju. Vaši podaci se nikada ne koriste za treniranje javnih AI modela.'
-    },
-    {
-      q: 'Da li AI može da izmisli nepostojeće zakone (halucinira)?',
-      a: 'Naš sistem koristi RAG (Retrieval-Augmented Generation) tehnologiju. To znači da AI odgovara ISKLJUČIVO na osnovu dokumenata i zakona koje vi ubacite u vašu bazu.'
-    },
-    {
-      q: 'U kom formatu dobijam generisane ugovore i akte?',
-      a: 'Sve odgovore i generisane ugovore možete preuzeti u izvornom Word (.docx) formatu sa standardnim pravničkim formatiranjem (Times New Roman, 12pt, obostrano poravnanje).'
-    },
-    {
-      q: 'Da li mogu da učitam skenirane papire ili samo PDF/Word?',
-      a: 'Trenutno je podržan direktan rad sa tekstualnim PDF dokumentima i Microsoft Word (.docx) fajlovima.'
-    }
-  ];
-
   return (
-    <section className="py-20 px-6 bg-white border-t border-[#16263D]/10">
-      <div className="max-w-3xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">
+    <section aria-labelledby="pitanja" className="border-t border-rule">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-12 lg:gap-16 lg:px-8">
+        <h2 id="pitanja" className="font-display text-3xl tracking-tight sm:text-4xl lg:col-span-4">
           Često postavljana pitanja
         </h2>
 
-        <div className="space-y-4">
-          {faqs.map((faq, i) => (
-            <div key={i} className="border border-[#16263D]/10 rounded-lg overflow-hidden bg-[#F7F3EC]/30">
-              <button
-                onClick={() => setOpenIndex(openIndex === i ? null : i)}
-                className="w-full text-left p-5 flex justify-between items-center font-medium text-[#16263D]"
-              >
-                <span>{faq.q}</span>
-                <span className="text-lg ml-2">{openIndex === i ? '−' : '+'}</span>
-              </button>
-              {openIndex === i && (
-                <div className="p-5 pt-0 text-sm text-[#16263D]/70 leading-relaxed border-t border-[#16263D]/5 bg-white">
-                  {faq.a}
-                </div>
-              )}
-            </div>
+        <div className="border-b border-rule lg:col-span-8">
+          {faqs.map((faq) => (
+            <details key={faq.q} className="group border-t border-rule">
+              <summary className="link-focus -mx-3 flex cursor-pointer list-none items-center justify-between gap-6 px-3 py-5 text-lg font-medium [&::-webkit-details-marker]:hidden">
+                {faq.q}
+                <svg
+                  aria-hidden
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <path d="M2 8h12" />
+                  <path
+                    d="M8 2v12"
+                    className="origin-center transition-transform [transform-box:fill-box] group-open:scale-y-0"
+                  />
+                </svg>
+              </summary>
+              <p className="max-w-[65ch] pb-6 pr-10 leading-relaxed text-ink-soft">{faq.a}</p>
+            </details>
           ))}
         </div>
       </div>

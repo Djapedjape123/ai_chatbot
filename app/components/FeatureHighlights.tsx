@@ -1,46 +1,41 @@
-export default function FeatureHighlights() {
-  const features = [
-    {
-      icon: '🔍',
-      title: 'Vektorska Pretraga Baze',
-      description: 'AI ne pretrazuje samo ključne reči, već razume duboki pravni smisao vaših PDF dokumenata i zakona.'
-    },
-    {
-      icon: '📄',
-      title: 'Čitanje i Prepravka Worda',
-      description: 'Prikačite radnu verziju ugovora (.docx), zatražite izmene i dobićete prepravljen tekst spreman za rad.'
-    },
-    {
-      icon: '📝',
-      title: 'Izvoz u Formatiran .docx',
-      description: 'Jednim klikom preuzmite gotov zapisnik ili pravni akt sa definisanim marginama i Times New Roman fontom.'
-    },
-    {
-      icon: '⚡',
-      title: 'Brzi Pravni Šabloni',
-      description: 'Nemate vremena za kucanje? Jednim klikom pokrenite analizu rizika, izradu ugovora ili sažetak za klijenta.'
-    }
-  ];
+const features = [
+  {
+    title: 'Pretraga po smislu',
+    text: 'Asistent ne traži samo ključne reči. Razume o čemu pitate i pronalazi relevantne delove vaših dokumenata.',
+  },
+  {
+    title: 'Prepravka Word dokumenata',
+    text: 'Prikačite radnu verziju ugovora (.docx), zatražite izmene i dobijate prepravljen tekst spreman za rad.',
+  },
+  {
+    title: 'Izvoz u Word',
+    text: 'Jednim klikom preuzmite odgovor kao .docx sa pravničkim formatiranjem: definisane margine, Times New Roman, obostrano poravnanje.',
+  },
+  {
+    title: 'Gotovi zadaci',
+    text: 'Analiza rizika, izrada ugovora ili sažetak za klijenta pokreću se jednim klikom, bez kucanja uputstva.',
+  },
+];
 
+export default function FeatureHighlights() {
   return (
-    <section className="py-20 px-6 bg-[#F7F3EC] border-t border-[#16263D]/10">
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-          Sve što je potrebno jednoj kancelariji
+    <section aria-labelledby="mogucnosti" className="border-t border-rule">
+      <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+        <h2 id="mogucnosti" className="font-display text-3xl tracking-tight sm:text-4xl">
+          Rutinski poslovi, brže
         </h2>
-        <p className="text-center text-[#16263D]/60 mb-16 max-w-xl mx-auto">
-          Automatizujte rutinske zadatke i posvetite vreme onome što je zaista važno — vašim klijentima.
+        <p className="mt-4 max-w-[34rem] leading-relaxed text-ink-soft">
+          Pretraga, prepravka i priprema akata na jednom mestu, da vreme ostane za klijente.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {features.map((f, i) => (
-            <div key={i} className="p-6 bg-white rounded-xl border border-[#16263D]/10 shadow-sm hover:shadow-md transition">
-              <div className="text-3xl mb-4">{f.icon}</div>
-              <h3 className="text-xl font-semibold mb-2">{f.title}</h3>
-              <p className="text-[#16263D]/70 text-sm leading-relaxed">{f.description}</p>
-            </div>
+        <ul className="mt-12 grid gap-x-16 gap-y-10 sm:grid-cols-2">
+          {features.map((f) => (
+            <li key={f.title} className="border-t border-ink pt-5">
+              <h3 className="font-display text-2xl tracking-tight">{f.title}</h3>
+              <p className="mt-2 max-w-[30rem] leading-relaxed text-ink-soft">{f.text}</p>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   );

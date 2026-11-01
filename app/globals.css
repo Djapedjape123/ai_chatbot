@@ -22,3 +22,53 @@
 body {
   font-family: var(--font-serif), Georgia, serif;
 }
+
+/* Početna stranica: tokeni (boje su iste kao u ostatku aplikacije, ovde dobijaju imena). */
+@theme {
+  --color-paper: #f7f3ec;
+  --color-sheet: #ffffff;
+  --color-ink: #16263d;
+  --color-ink-soft: rgb(22 38 61 / 0.72);
+  --color-rule: rgb(22 38 61 / 0.14);
+  --color-marker: #f2d64b;
+}
+
+@theme inline {
+  --font-display: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+  --font-body: var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-ink px-6 py-3 text-base font-medium text-paper transition-colors hover:bg-ink/85;
+  }
+
+  .btn-primary:focus-visible,
+  .link-focus:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+  }
+
+  /* Marker: označava deo odgovora koji dolazi iz dokumenta. Krajnje stanje je podrazumevano, a
+     potez markera se igra samo kad korisnik nije isključio animacije. */
+  .marker {
+    color: inherit;
+    background-image: linear-gradient(var(--color-marker), var(--color-marker));
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0.05em 0.15em;
+    margin: 0 -0.15em;
+  }
+}
+
+@keyframes marker-sweep {
+  from {
+    background-size: 0% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .marker {
+    animation: marker-sweep 800ms cubic-bezier(0.22, 0.7, 0.2, 1) 700ms backwards;
+  }
+}
