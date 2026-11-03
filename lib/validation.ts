@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import { MAX_FILE_SIZE } from './ingest.ts';
+import {
+  IMAGES_MAX_TOTAL_BYTES,
+  IMAGE_MAX_BYTES,
+  MAX_DOCUMENT_PAGES,
+  MAX_IMAGES_PER_QUESTION,
+  TRANSCRIPT_MAX_LENGTH,
+} from './image-limits.ts';
 
 // Limit na dužinu pojedinačnog upita
 export const MAX_QUERY_LENGTH = 4000;
@@ -11,18 +18,73 @@ const invalidBody = 'Neispravan zahtev.';
 const missingQuery = 'Pitanje nije poslato.';
 
 // Telo POST /api/chat. Nepoznata polja se odbacuju (zod ih podrazumevano uklanja).
+const querySchema = z
+  .string({ error: missingQuery })
+  .trim()
+  .min(1, missingQuery)
+  .max(MAX_QUERY_LENGTH, `Pitanje je predugačko. Maksimalna dozvoljena dužina je ${MAX_QUERY_LENGTH} karaktera.`);
+
+// Frontend za novi razgovor šalje null (JSON), odnosno ne šalje polje (FormData)
+const optionalChatIdSchema = uuidSchema.nullish().transform((v) => v ?? undefined);
+
 export const chatRequestSchema = z.object(
   {
-    query: z
-      .string({ error: missingQuery })
-      .trim()
-      .min(1, missingQuery)
-      .max(MAX_QUERY_LENGTH, `Pitanje je predugačko. Maksimalna dozvoljena dužina je ${MAX_QUERY_LENGTH} karaktera.`),
-    // Frontend za novi razgovor šalje null
-    chatId: uuidSchema.nullish().transform((v) => v ?? undefined),
+    query: querySchema,
+    chatId: optionalChatIdSchema,
   },
   { error: invalidBody }
 );
+
+// FormData za POST /api/chat sa slikama (Faza 3.5). Ovde se proveravaju broj i veličina; da je slika zaista
+// ispravan JPEG proverava ruta po sadržaju (lib/image-inspect.ts).
+const imageFile = z
+  .instanceof(File, { error: 'Slika nije poslata kao fajl.' })
+  .refine((f) => f.size > 0, 'Slika je prazna (0 bajtova).')
+  .refine((f) => f.size <= IMAGE_MAX_BYTES, `Slika je prevelika. Najviše je ${IMAGE_MAX_BYTES / 1024}KB po slici.`);
+
+export const chatImagesFormSchema = z.object(
+  {
+    query: querySchema,
+    chatId: optionalChatIdSchema,
+    images: z
+      .array(imageFile)
+      .min(1, 'Niste poslali sliku.')
+      .max(MAX_IMAGES_PER_QUESTION, `Najviše ${MAX_IMAGES_PER_QUESTION} slika uz jedno pitanje.`)
+      .refine((list) => list.reduce((sum, f) => sum + f.size, 0) <= IMAGES_MAX_TOTAL_BYTES, 'Slike su zajedno prevelike.'),
+  },
+  { error: invalidBody }
+);
+
+// FormData za POST /api/ingest/transcribe: jedna strana slikanog dokumenta (Faza 3.5)
+export const transcribeFormSchema = z.object({ image: imageFile }, { error: invalidBody });
+
+export function transcribeFormInput(formData: FormData) {
+  return { image: formData.get('image') ?? undefined };
+}
+
+// Telo POST /api/ingest/text: prepis koji je advokat pregledao (i možda ispravio) pre indeksiranja.
+// Tekst je ulaz kao i PDF koji advokat sam napravi: prolazi iste provere (pasusi, detekcija, ledger).
+export const transcriptIngestSchema = z.object(
+  {
+    title: z.string({ error: 'Unesite naziv dokumenta.' }).trim().min(1, 'Unesite naziv dokumenta.').max(200, 'Naziv je predugačak (najviše 200 znakova).'),
+    text: z
+      .string({ error: 'Prepis nije poslat.' })
+      .trim()
+      .min(1, 'Prepis je prazan.')
+      .max(TRANSCRIPT_MAX_LENGTH, `Prepis je predugačak. Najviše je ${TRANSCRIPT_MAX_LENGTH} znakova.`),
+    pages: z.number({ error: invalidBody }).int(invalidBody).min(1, invalidBody).max(MAX_DOCUMENT_PAGES, `Najviše ${MAX_DOCUMENT_PAGES} strana u jednom dokumentu.`),
+    acknowledge: z.boolean().optional().default(false),
+  },
+  { error: invalidBody }
+);
+
+export function chatImagesFormInput(formData: FormData) {
+  return {
+    query: formData.get('query') ?? undefined,
+    chatId: formData.get('chatId') ?? undefined,
+    images: formData.getAll('images'),
+  };
+}
 
 // Limit veličine fajla je u lib/ingest.ts (deli ga i klijent)
 export { MAX_FILE_SIZE };

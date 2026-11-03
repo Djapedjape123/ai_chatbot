@@ -122,9 +122,20 @@ const BLOCK_REASONS: Record<string, string> = {
   too_many_pages: 'PDF ima previše strana',
   parse_timeout: 'Obrada fajla je trajala predugo',
   unreadable_docx: 'Word dokument je oštećen ili nije ispravan',
+  // Faza 3.5 (slike sa telefona)
+  image_too_large: 'Slika je prevelika',
+  image_dimensions: 'Slika ima neodgovarajuće dimenzije',
+  unreadable_image: 'Slika je oštećena ili nije ispravan JPEG',
 };
 
-const FILE_KINDS: Record<string, string> = { pdf: 'PDF', docx: 'Word (.docx)' };
+const FILE_KINDS: Record<string, string> = { pdf: 'PDF', docx: 'Word (.docx)', image: 'Slika sa telefona' };
+
+// Odakle je stigao odbijeni fajl, ako nije iz "Dodaj pravnu literaturu"
+const UPLOAD_CONTEXTS: Record<string, string> = {
+  attachment: 'Prilog uz pitanje (nije dodat u bazu znanja)',
+  chat_image: 'Slika uz pitanje (nije sačuvana)',
+  transcribe: 'Strana slikanog dokumenta (prepis, nije sačuvana)',
+};
 
 // metadata je podatak iz baze: vrednost se traži samo među sopstvenim ključevima (ne i 'constructor', '__proto__')
 const lookup = (table: Record<string, string>, key: unknown): string | undefined =>
@@ -167,6 +178,8 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
     case 'document_uploaded': {
       documentLine();
       kindLine();
+      const docPages = count(meta.pages);
+      if (docPages !== null) details.push(`Broj strana: ${docPages}`);
       const chunks = count(meta.chunks);
       if (chunks !== null) details.push(`Pasusa: ${chunks}`);
       sizeLine();
@@ -181,7 +194,8 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
       const pages = count(meta.pages);
       if (pages !== null) details.push(`Broj strana: ${pages}`);
       kindLine();
-      if (meta.context === 'attachment') details.push('Prilog uz pitanje (nije dodat u bazu znanja)');
+      const uploadContext = lookup(UPLOAD_CONTEXTS, meta.context);
+      if (uploadContext) details.push(uploadContext);
       sizeLine();
       break;
     }
@@ -202,6 +216,8 @@ export function describeActivity(row: ActivityRow, titles: ReadonlyMap<string, s
         else if (chunks > 0) details.push(`Broj pasusa iz izvora: ${chunks} (dokumenti nisu zabeleženi)`);
         else details.push('Bez izvora iz dokumenata');
       }
+      const images = count(meta.images);
+      if (images !== null && images > 0) details.push(`Broj slika uz pitanje: ${images}`);
       const tokens = [meta.input_tokens, meta.output_tokens, meta.embed_tokens].map(count).filter((n): n is number => n !== null);
       if (tokens.length > 0) details.push(`Potrošeno tokena: ${tokens.reduce((a, b) => a + b, 0)}`);
       break;

@@ -2,6 +2,8 @@
 
 import { useState, useRef } from 'react';
 import { MAX_FILE_SIZE } from '@/lib/ingest';
+import { useTouchCameraDevice } from '@/lib/device';
+import CameraDocumentCapture from '@/app/components/CameraDocumentCapture';
 
 // Dodali smo onUploadSuccess kako bi prosledili ime fajla glavnom ekranu
 interface PdfUploaderProps {
@@ -18,6 +20,9 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
   // Server je našao tekst koji liči na naredbe za AI: korisnik odlučuje da li ipak nastavlja
   const [suspiciousWarning, setSuspiciousWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Faza 3.5: na telefonu i tabletu dokument može i da se slika (na računaru dugmeta nema)
+  const isCameraDevice = useTouchCameraDevice();
+  const [mode, setMode] = useState<'file' | 'camera'>('file');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -89,7 +94,7 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#16263D]/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl bg-[#F7F3EC] p-6 shadow-2xl">
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-xl bg-[#F7F3EC] p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-[#16263D]">Dodaj pravnu literaturu</h2>
           <button
@@ -101,6 +106,19 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
           </button>
         </div>
 
+        {mode === 'camera' ? (
+          <CameraDocumentCapture onBack={() => setMode('file')} onUploadSuccess={onUploadSuccess} />
+        ) : (
+        <>
+        {isCameraDevice && (
+          <button
+            onClick={() => setMode('camera')}
+            disabled={loading}
+            className="w-full mb-4 py-2.5 rounded-md bg-white border border-[#16263D]/20 text-sm font-medium text-[#16263D] hover:bg-gray-50 disabled:opacity-50 shadow-sm"
+          >
+            📷 Slikaj dokument telefonom
+          </button>
+        )}
         <div className="mb-6">
           <input
             type="file"
@@ -162,6 +180,8 @@ export default function PdfUploader({ onClose, onUploadSuccess }: PdfUploaderPro
             </>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

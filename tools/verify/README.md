@@ -23,6 +23,8 @@ Ne dokazuje: da pravi Supabase odgovara isto. Lažni server je namerno strog gde
    ```bash
    node tools/verify/probe-admin-activity.mjs   # 2.5.7 i 2.5.8
    node tools/verify/probe-sidebar-entry.mjs    # 2.5.9 (isti build; traži Edge na računaru)
+   node --experimental-strip-types --disable-warning=ExperimentalWarning tools/verify/probe-camera-images.mjs   # Faza 3.5 (isti build)
+   node --experimental-strip-types --disable-warning=ExperimentalWarning tools/verify/probe-browser-jpeg.mjs     # Faza 3.5, ne traži build; traži Edge
    ```
 
    Izlaz je jedna linija po proveri (`ok` / `FAIL`), kod izlaza je 1 ako je bilo koja pala. Ponovni build je potreban posle svake izmene koda aplikacije.
@@ -42,6 +44,9 @@ Ne dokazuje: da pravi Supabase odgovara isto. Lažni server je namerno strog gde
 | `mutations-ts-2-5-11.mjs` | 5 mutacija aplikacije (`mfa_removed` u `lib/activity.ts`), hvata ih `npm test`. |
 | `mutations-lib-2-5-7.mjs`, `mutations-app-2-5-7.mjs` | Mutacije 2.5.7 i 2.5.8 (čista logika; povezivanje stranica, rute izvoza i akcije). |
 | `mutations-2-5-9.mjs` | Mutacije 2.5.9: sloj `static` (`npm test`, brzo) i sloj `probe` (build + `probe-sidebar-entry.mjs`, ~2 minuta po mutaciji). |
+| `probe-camera-images.mjs` | Proba Faze 3.5 (slike sa telefona): `/api/chat` sa slikama, `/api/ingest/transcribe`, `/api/ingest/text` i `/activity`. Lažni Supabase sa slojem podataka (`createFakeSupabase({ appData: true })`: `chats`, `messages`, `documents`, `document_chunks`, `reserve_usage`, `close_usage`, `match_document_chunks`) i lažni Claude/Voyage: `lib/fake-ai-preload.mjs` se učitava u `next start` preko `NODE_OPTIONS=--import=…` i preusmerava `https://api.anthropic.com` i `https://api.voyageai.com` na lokalni server (`FAKE_AI_URL`), pa proba vidi tačno telo zahteva (npr. da slika nema EXIF). |
+| `probe-browser-jpeg.mjs` | Proba Faze 3.5 u pravom Edge-u: STVARNA `prepareImage` (TypeScript očišćen od tipova preko `node:module` `stripTypeScriptTypes`, serviran stranici preko `page.route`), a rezultat proverava serverski `inspectJpeg`. Ne traži build. |
+| `mutations-lib-3-5-1.mjs`, `mutations-lib-3-5-2.mjs`, `mutations-app-faza35.mjs` | Mutacije Faze 3.5: čitač JPEG-a i granice, priprema slike i uređaj, povezivanje ruta (sloj `static` i sloj `probe` sa `probe-camera-images.mjs`). |
 
 ## Zamke koje su već plaćene
 

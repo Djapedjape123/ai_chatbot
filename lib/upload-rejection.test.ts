@@ -136,3 +136,43 @@ test('describeRejection: za prilog uz pitanje nepodržan tip kaže da je dozvolj
   ];
   for (const x of same) assert.deepEqual(describeRejection(x, 'attachment'), describeRejection(x), x.reason);
 });
+
+test('describeRejection: slike (Faza 3.5) imaju poruku sa uputstvom da se slika ponovo, bez internih oznaka', () => {
+  const type = describeRejection({ ok: false, reason: 'unsupported_type' }, 'image');
+  assert.equal(type.status, 400);
+  assert.equal(type.code, 'unsupported_type');
+  assert.match(type.message, /JPEG/);
+  assert.match(type.message, /kamer/);
+  assert.doesNotMatch(type.message, /PDF|docx/);
+  assert.deepEqual(type.audit, { reason: 'unsupported_type' });
+
+  const large = describeRejection({ ok: false, reason: 'image_too_large' }, 'image');
+  assert.equal(large.code, 'image_too_large');
+  assert.match(large.message, /800KB/);
+  assert.deepEqual(large.audit, { reason: 'image_too_large' });
+
+  const dims = describeRejection({ ok: false, reason: 'image_dimensions', width: 5000, height: 10 }, 'image');
+  assert.equal(dims.code, 'image_dimensions');
+  assert.match(dims.message, /5000 x 10/);
+  assert.match(dims.message, /200/);
+  assert.match(dims.message, /2000/);
+  assert.deepEqual(dims.audit, { reason: 'image_dimensions', width: 5000, height: 10 });
+
+  const broken = describeRejection({ ok: false, reason: 'unreadable_image', finding: 'trailing_data' }, 'image');
+  assert.equal(broken.code, 'unreadable_image');
+  assert.match(broken.message, /ponovo/);
+  assert.doesNotMatch(broken.message, /trailing/);
+  assert.deepEqual(broken.audit, { reason: 'unreadable_image', finding: 'trailing_data' });
+
+  const count = describeRejection({ ok: false, reason: 'image_count' }, 'image');
+  assert.equal(count.code, 'image_count');
+  assert.match(count.message, /5/);
+  assert.equal(count.audit, null);
+
+  for (const d of [type, large, dims, broken, count]) assert.ok(d.message.endsWith('.'), d.message);
+});
+
+test('describeRejection: razlozi PDF-a i Word-a su isti i u kontekstu slike (ne dešavaju se, ali ne smeju da puknu)', () => {
+  const x: UploadRejection = { ok: false, reason: 'parse_timeout' };
+  assert.deepEqual(describeRejection(x, 'image'), describeRejection(x));
+});

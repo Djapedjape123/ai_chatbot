@@ -146,7 +146,9 @@ function pickColumns(row, select, allowed) {
   return out;
 }
 
-export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
+// appData: true uključuje razgovore, poruke, dokumente, pasuse i RPC za ledger i pretragu (proba Faze 3.5).
+// Bez toga se te tabele ponašaju kao ranije (prazno čitanje, upis nije podržan), pa starije probe ostaju iste.
+export function createFakeSupabase({ port = 54321, serverMax = 1000, appData = false } = {}) {
   const state = {
     users: new Map(), // id -> { id, email, role, factors, disabled_at, banned_until, noProfile? }
     settings: null,
@@ -156,6 +158,12 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
     failures: new Map(),
     pageDelayMs: 0,
     serverMax,
+    // appData
+    chats: [],
+    messages: [],
+    documents: [],
+    chunks: [],
+    ledger: [],
   };
 
   function reset() {
@@ -164,6 +172,11 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
     state.requests = [];
     state.failures.clear();
     state.pageDelayMs = 0;
+    state.chats = [];
+    state.messages = [];
+    state.documents = [];
+    state.chunks = [];
+    state.ledger = [];
     state.settings = {
       daily_message_limit: 100,
       daily_document_limit: 20,
@@ -298,6 +311,10 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
       return res.end();
     }
 
+    if (appData && ['chats', 'messages', 'documents', 'document_chunks'].includes(table)) {
+      return await handleAppTable(req, res, url, entry, table, c, sendRows);
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new PostgrestError(405, 'PGRST000', `unsupported ${req.method} ${table}`);
 
     if (table === 'audit_log') {
@@ -335,10 +352,69 @@ export function createFakeSupabase({ port = 54321, serverMax = 1000 } = {}) {
     throw new PostgrestError(404, 'PGRST205', `fake: tabela ${table} nije podržana`);
   }
 
+  // appData: upisi samo preko service_role (kao u pravoj bazi), čitanja korisnika samo svojih redova (RLS)
+  async function handleAppTable(req, res, url, entry, table, c, sendRows) {
+    const store = { chats: state.chats, messages: state.messages, documents: state.documents, document_chunks: state.chunks }[table];
+    const eqParam = (name) => /^eq\.(.+)$/.exec(url.searchParams.get(name) ?? '')?.[1];
+    if (req.method === 'POST') {
+      if (c.kind !== 'service') throw new PostgrestError(403, '42501', `permission denied for table ${table}`);
+      const body = await readBody(req, entry);
+      const created = (Array.isArray(body) ? body : [body]).map((row) => ({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...row }));
+      store.push(...created);
+      if (/return=representation/.test(req.headers.prefer ?? '')) {
+        return sendRows(created.map((r) => pickColumns(r, url.searchParams.get('select'), Object.keys(r))));
+      }
+      res.writeHead(201);
+      return res.end();
+    }
+    if (req.method === 'DELETE') {
+      if (c.kind === 'anon') throw new PostgrestError(401, '42501', `permission denied for table ${table}`);
+      const id = eqParam('id');
+      const owner = c.kind === 'service' ? eqParam('user_id') : c.sub;
+      for (let i = store.length - 1; i >= 0; i--) if (store[i].id === id && (!owner || store[i].user_id === owner)) store.splice(i, 1);
+      if (table === 'documents') for (let i = state.chunks.length - 1; i >= 0; i--) if (state.chunks[i].document_id === id) state.chunks.splice(i, 1);
+      res.writeHead(204);
+      return res.end();
+    }
+    if (c.kind === 'anon') throw new PostgrestError(401, '42501', `permission denied for table ${table}`);
+    let rows = store.filter((r) => c.kind === 'service' || r.user_id === c.sub);
+    for (const name of ['id', 'chat_id', 'document_id']) {
+      const v = eqParam(name);
+      if (v) rows = rows.filter((r) => r[name] === v);
+    }
+    rows = [...rows].reverse();
+    if (url.searchParams.has('limit')) rows = rows.slice(0, Number(url.searchParams.get('limit')));
+    // maybeSingle bez reda: PostgREST vraća 406, a supabase-js to pretvara u null
+    if (/vnd\.pgrst\.object/.test(req.headers.accept ?? '') && rows.length === 0) throw new PostgrestError(406, 'PGRST116', 'JSON object requested, multiple (or no) rows returned');
+    return sendRows(rows.map((r) => pickColumns(r, url.searchParams.get('select'), Object.keys(r))), { total: rows.length });
+  }
+
   async function handleRpc(req, res, url, entry) {
     const name = url.pathname.replace('/rest/v1/rpc/', '');
     const c = caller(req);
     const body = (await readBody(req, entry)) ?? {};
+
+    if (appData && name === 'reserve_usage') {
+      if (c.kind !== 'service') throw new PostgrestError(403, '42501', 'permission denied for function reserve_usage');
+      const row = { id: crypto.randomUUID(), user_id: body.p_user_id, kind: body.p_kind, estimated: body.p_estimated_tokens, status: 'reserved', close: null };
+      state.ledger.push(row);
+      return json(res, 200, [{ allowed: true, reservation_id: row.id, reason: null }]);
+    }
+    if (appData && name === 'close_usage') {
+      if (c.kind !== 'service') throw new PostgrestError(403, '42501', 'permission denied for function close_usage');
+      const row = state.ledger.find((r) => r.id === body.p_reservation_id && r.user_id === body.p_user_id && r.status === 'reserved');
+      if (row) {
+        row.status = body.p_release ? 'released' : 'settled';
+        row.close = body;
+      }
+      res.writeHead(204);
+      return res.end();
+    }
+    if (appData && name === 'get_usage_summary') return json(res, 200, []);
+    if (appData && name === 'match_document_chunks') {
+      if (c.kind !== 'user') throw new PostgrestError(401, '42501', 'permission denied for function match_document_chunks');
+      return json(res, 200, []);
+    }
 
     if (name === 'admin_list_users') {
       const f = failure('rpc_admin_list_users');

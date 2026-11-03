@@ -6,6 +6,10 @@ import Sidebar from '@/app/components/Sidebar';
 import { readIsAdmin } from '@/lib/me';
 import { exportSingleMessageToWord, exportFullChatToWord } from '@/lib/exportWord';
 import { MAX_FILE_SIZE } from '@/lib/ingest';
+import { useTouchCameraDevice } from '@/lib/device';
+import { ImagePrepareError, prepareImage, type PreparedImage } from '@/lib/image-prepare';
+import { imageCountLabel } from '@/lib/image-label';
+import { MAX_IMAGES_PER_QUESTION } from '@/lib/image-limits';
 
 type Message = { id?: string; role: 'user' | 'assistant'; content: string };
 type Chat = { id: string; title: string; created_at: string };
@@ -24,6 +28,15 @@ const fileTemplates = [
   { icon: '📖', text: 'Napravi kratak sažetak za klijenta' }
 ];
 
+// Faza 3.5: šabloni kad su uz pitanje slike dokumenta
+const imageTemplates = [
+  { icon: '📄', text: 'Šta piše u ovom dokumentu?' },
+  { icon: '⏳', text: 'Koji su rokovi u ovom dokumentu?' },
+  { icon: '⚠️', text: 'Analiziraj pravne rizike u ovom dokumentu' }
+];
+
+const DEFAULT_IMAGE_REQUEST = 'Šta piše u ovom dokumentu? Ukratko objasni sadržaj.';
+
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -41,6 +54,11 @@ export default function Home() {
 
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFileText, setAttachedFileText] = useState<string | null>(null);
+  // Slike uz pitanje (Faza 3.5): samo na telefonu i tabletu, do 5, ne čuvaju se nigde
+  const isCameraDevice = useTouchCameraDevice();
+  const [images, setImages] = useState<PreparedImage[]>([]);
+  const [preparingImages, setPreparingImages] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -131,10 +149,51 @@ export default function Home() {
     setTimeout(() => setToast(null), ms);
   }
 
+  async function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+    if (files.length === 0) return;
+    if (attachedFileText) {
+      showToast('Uklonite Word prilog pre slanja slika (jedno pitanje ima ili prilog ili slike).');
+      return;
+    }
+    const room = MAX_IMAGES_PER_QUESTION - images.length;
+    if (files.length > room) showToast(`Uz jedno pitanje može najviše ${MAX_IMAGES_PER_QUESTION} slika.`);
+    setPreparingImages(true);
+    try {
+      const added: PreparedImage[] = [];
+      for (const file of files.slice(0, Math.max(0, room))) {
+        try {
+          added.push(await prepareImage(file));
+        } catch (err) {
+          showToast(err instanceof ImagePrepareError ? err.message : 'Slika ne može da se obradi. Slikajte ponovo.', 8000);
+        }
+      }
+      setImages((prev) => [...prev, ...added]);
+    } finally {
+      setPreparingImages(false);
+    }
+  }
+
+  function removeImage(index: number) {
+    URL.revokeObjectURL(images[index].previewUrl);
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function clearImages() {
+    images.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+    setImages([]);
+  }
+
   async function handleFileAttachment(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = ''; // da se isti fajl može ponovo izabrati
     if (!file) return;
+
+    if (images.length > 0) {
+      showToast('Uklonite slike pre dodavanja Word priloga (jedno pitanje ima ili prilog ili slike).');
+      return;
+    }
 
     if (!file.name.toLowerCase().endsWith('.docx')) {
       showToast('Za sada je moguća direktna prepravka samo .docx fajlova.');
@@ -187,10 +246,17 @@ export default function Home() {
 
   async function sendMessage(autoQuery?: string) {
     const baseQuery = autoQuery || input.trim();
-    if ((!baseQuery && !attachedFileText) || loading) return;
+    // Slike važe samo za pitanje koje korisnik sam šalje (ne za automatsko pitanje posle otpremanja)
+    const sentImages = autoQuery ? [] : images;
+    if ((!baseQuery && !attachedFileText && sentImages.length === 0) || loading || preparingImages) return;
 
     let finalQueryForAI = baseQuery;
     let queryForDisplay = baseQuery;
+
+    if (sentImages.length > 0) {
+      finalQueryForAI = baseQuery || DEFAULT_IMAGE_REQUEST;
+      queryForDisplay = `${imageCountLabel(sentImages.length)}\n\n${finalQueryForAI}`;
+    }
 
     if (attachedFileText) {
       const defaultReq = 'Molim te detaljno pročitaj i analiziraj ovaj dokument.';
@@ -203,20 +269,32 @@ export default function Home() {
       setInput('');
       setMessages((prev) => [...prev, { role: 'user', content: queryForDisplay }]);
       removeAttachment(); 
+      clearImages();
     }
 
     setLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: finalQueryForAI, chatId: activeChatId }),
-      });
-      const data = await res.json();
+      let res: Response;
+      if (sentImages.length > 0) {
+        // Pitanje sa slikama ide kao multipart; slike su već smanjene i bez metapodataka (lib/image-prepare.ts)
+        const formData = new FormData();
+        formData.append('query', finalQueryForAI);
+        if (activeChatId) formData.append('chatId', activeChatId);
+        sentImages.forEach((img, i) => formData.append('images', img.blob, `slika-${i + 1}.jpg`));
+        res = await fetch('/api/chat', { method: 'POST', body: formData });
+      } else {
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: finalQueryForAI, chatId: activeChatId }),
+        });
+      }
+      // Odgovor ne mora da bude JSON (npr. 413 sa Vercel-a pre nego što zahtev stigne do rute)
+      const data = await res.json().catch(() => null);
 
-      if (!res.ok) {
-        showToast(data.error || 'Došlo je do greške.');
+      if (!res.ok || !data) {
+        showToast(data?.error || (res.status === 413 ? 'Slike su prevelike.' : 'Došlo je do greške.'));
         return;
       }
 
@@ -254,7 +332,7 @@ export default function Home() {
   }
 
   const activeChatTitle = chats.find(c => c.id === activeChatId)?.title || 'Pravni_Razgovor';
-  const activeTemplates = attachedFileText ? fileTemplates : defaultTemplates;
+  const activeTemplates = images.length > 0 ? imageTemplates : attachedFileText ? fileTemplates : defaultTemplates;
 
   return (
     <div className="flex h-screen relative overflow-hidden bg-[#F7F3EC]">
@@ -380,6 +458,28 @@ export default function Home() {
             </div>
           )}
 
+          {(images.length > 0 || preparingImages) && (
+            <div className="mb-3">
+              <div className="flex flex-wrap gap-2">
+                {images.map((img, i) => (
+                  <div key={img.previewUrl} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- lokalni blob: prikaz, ne ide na server */}
+                    <img src={img.previewUrl} alt={`Slika ${i + 1}`} className="h-16 w-12 object-cover rounded-md border border-[#16263D]/20 shadow-sm" />
+                    <button
+                      onClick={() => removeImage(i)}
+                      aria-label={`Ukloni sliku ${i + 1}`}
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-white border border-[#16263D]/20 text-[10px] font-bold text-[#16263D]/70 hover:text-red-500 shadow-sm"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {preparingImages && <span className="text-xs text-[#16263D]/60 self-center animate-pulse">Pripremam sliku...</span>}
+              </div>
+              <p className="mt-1.5 text-[10px] text-[#16263D]/50">Slika se šalje AI servisu radi odgovora i ne čuva se.</p>
+            </div>
+          )}
+
           {!input.trim() && (
             <div className="flex flex-wrap gap-2 mb-3">
               {activeTemplates.map((tpl, idx) => (
@@ -411,19 +511,41 @@ export default function Home() {
                📎
             </button>
 
+            {isCameraDevice && (
+              <>
+                {/* Bez atributa capture: telefon nudi kameru ili galeriju */}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  ref={imageInputRef}
+                  onChange={handleImagePick}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={preparingImages || images.length >= MAX_IMAGES_PER_QUESTION}
+                  aria-label="Slikaj dokument"
+                  className="rounded-md border border-[#16263D]/20 bg-white text-[#16263D]/60 px-3 py-2 hover:bg-gray-50 transition h-[42px] flex items-center justify-center shadow-sm shrink-0 disabled:opacity-50"
+                >
+                  📷
+                </button>
+              </>
+            )}
+
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder={attachedFileName ? "Zadatak za fajl..." : "Pitaj..."}
+              placeholder={images.length > 0 ? "Pitanje o slikama..." : attachedFileName ? "Zadatak za fajl..." : "Pitaj..."}
               className="flex-1 resize-none rounded-md border border-[#16263D]/20 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#16263D]/30 bg-white shadow-sm text-sm min-h-[42px] max-h-[120px]"
             />
             
             <button
               onClick={() => sendMessage()}
-              disabled={loading || (!input.trim() && !attachedFileText)}
+              disabled={loading || preparingImages || (!input.trim() && !attachedFileText && images.length === 0)}
               className="rounded-md bg-[#16263D] text-[#F7F3EC] px-4 py-2 hover:bg-[#16263D]/90 disabled:opacity-50 transition h-[42px] text-sm font-medium shrink-0"
             >
               Pošalji

@@ -23,6 +23,8 @@ function walk(dir: string): string[] {
 
 const ingest = read('app', 'api', 'ingest', 'route.ts');
 const attachment = read('app', 'api', 'attachments', 'docx', 'route.ts');
+// Indeksiranje posle čitanja (pasusi, rezervacija, upis, audit) je od Faze 3.5 u zajedničkoj funkciji
+const pipeline = read('lib', 'ingest-pipeline.ts');
 
 // Argumenti svakog poziva funkcije, do uparene zatvorene zagrade
 function callsOf(source: string, call: string): string[] {
@@ -77,9 +79,12 @@ test('redosled u rutama: IP burst, pa prijava, pa čitanje fajla', () => {
 
 test('/api/ingest: fajl se čita i proverava PRE rezervacije u ledger-u (odbijen fajl ne troši limit)', () => {
   const readAt = callAt(ingest, 'readFileInWorker(');
-  const reserve = callAt(ingest, 'reserveUsage(');
-  assert.ok(readAt > 0 && reserve > readAt, `${readAt} < ${reserve}`);
+  const index = callAt(ingest, 'indexDocumentText(');
+  assert.ok(readAt > 0 && index > readAt, `${readAt} < ${index}`);
+  assert.ok(!ingest.includes('reserveUsage('), 'ruta rezerviše samo kroz indexDocumentText');
   assert.ok(callAt(ingest, 'detectFileType(') < readAt);
+  // U zajedničkoj funkciji rezervacija dolazi tek posle provere sumnjivog sadržaja
+  assert.ok(callAt(pipeline, 'findSuspiciousUpload(') > 0 && callAt(pipeline, 'reserveUsage(') > callAt(pipeline, 'findSuspiciousUpload('));
 });
 
 test('/api/attachments/docx: ništa se ne čuva i ne troši: bez rezervacije, bez Voyage-a, bez upisa osim audita', () => {
@@ -113,9 +118,10 @@ test('audit nikad ne dobija naziv fajla: metadata ne čita file.name', () => {
 });
 
 test('/api/ingest: upisan dokument nosi vrstu fajla (probi nije dostupno: uspeh zavisi od Voyage-a)', () => {
-  const uploaded = callsOf(ingest, 'logAudit(').find((c) => c.includes("'document_uploaded'"));
+  const uploaded = callsOf(pipeline, 'logAudit(').find((c) => c.includes("'document_uploaded'"));
   assert.ok(uploaded, 'nema audita document_uploaded');
-  assert.ok(/file_kind:\s*kind/.test(uploaded), uploaded.slice(0, 200));
+  assert.ok(/file_kind:\s*fileKind/.test(uploaded), uploaded.slice(0, 200));
+  assert.ok(/fileKind:\s*kind/.test(callsOf(ingest, 'indexDocumentText(')[0] ?? ''), 'ruta prosleđuje vrstu fajla po sadržaju');
 });
 
 test('lib/file-read.ts: worker se pokreće doslovnim izrazom new Worker(new URL(..., import.meta.url))', () => {

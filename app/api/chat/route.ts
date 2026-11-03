@@ -2,7 +2,16 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireUser } from '@/lib/require-user';
 import { apiError } from '@/lib/api-error';
-import { chatRequestSchema } from '@/lib/validation';
+import { chatImagesFormInput, chatImagesFormSchema, chatRequestSchema } from '@/lib/validation';
+import {
+  buildImageUserContent,
+  estimateImageTokens,
+  imageMessageContent,
+  inspectImages,
+  type CheckedImage,
+  type ClaudeContentBlock,
+} from '@/lib/chat-images';
+import { describeRejection } from '@/lib/upload-rejection';
 import { buildRagContext, uniqueDocumentIds } from '@/lib/rag-context';
 import { buildSystemPrompt } from '@/lib/prompts';
 import { enforceIpBurst, reserveUsage, settleUsage, releaseUsage, type ActualTokens } from '@/lib/usage';
@@ -21,6 +30,9 @@ import {
 export const maxDuration = 60;
 // Limit na broj starih poruka koje šaljemo AI-ju radi štednje tokena
 const MAX_HISTORY_MESSAGES = 12;
+// Claude sa slikama radi duže; zajedno sa Voyage-om (15 s) staje u maxDuration
+const CLAUDE_TIMEOUT_MS = 35_000;
+const CLAUDE_IMAGES_TIMEOUT_MS = 40_000;
 
 // Oblik reda koji vraća match_document_chunks (document_id stiže tek posle migracije 20261028130000)
 type MatchedChunk = { document_id?: string; document_title: string; content: string; similarity: number };
@@ -43,18 +55,55 @@ export async function POST(req: Request) {
     if (authErrorResponse) return authErrorResponse;
     const actor = { id: user.id, email: user.email };
 
-    // 0.5 Validacija tela zahteva (zod): pitanje je string 1-4000 karaktera posle trim-a, chatId je UUID ili ga nema
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return apiError('Neispravan zahtev.', 400, 'invalid_request');
+    // 0.5 Validacija tela zahteva (zod): pitanje je string 1-4000 karaktera posle trim-a, chatId je UUID ili ga nema.
+    //     Pitanje sa slikama (Faza 3.5) stiže kao multipart/form-data sa 1-5 slika; bez slika kao JSON.
+    let trimmedQuery: string;
+    let chatId: string | undefined;
+    let images: CheckedImage[] = [];
+
+    if ((req.headers.get('content-type') ?? '').toLowerCase().startsWith('multipart/form-data')) {
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch {
+        return apiError('Neispravan zahtev.', 400, 'invalid_request');
+      }
+      const parsed = chatImagesFormSchema.safeParse(chatImagesFormInput(formData));
+      if (!parsed.success) {
+        return apiError(parsed.error.issues[0].message, 400, 'invalid_request');
+      }
+      ({ query: trimmedQuery, chatId } = parsed.data);
+      const files = parsed.data.images;
+
+      // Slika po SADRŽAJU (samo JPEG), bez metapodataka (EXIF, GPS). Odbijanje ne troši ledger (rezervacija je
+      // kasnije); u audit ide razlog, bez slike i bez naziva fajla.
+      const checked = inspectImages(await Promise.all(files.map(async (f) => new Uint8Array(await f.arrayBuffer()))));
+      if (!checked.ok) {
+        const d = describeRejection(checked.rejection, 'image');
+        if (d.audit) {
+          const size = checked.index > 0 ? files[checked.index - 1].size : undefined;
+          await logAudit(actor, 'document_upload_blocked', {
+            ip,
+            metadata: { ...d.audit, file_kind: 'image', context: 'chat_image', ...(size !== undefined ? { size_bytes: size } : {}) },
+          });
+        }
+        return apiError(d.message, d.status, d.code);
+      }
+      images = checked.images;
+    } else {
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return apiError('Neispravan zahtev.', 400, 'invalid_request');
+      }
+      const parsed = chatRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return apiError(parsed.error.issues[0].message, 400, 'invalid_request');
+      }
+      ({ query: trimmedQuery, chatId } = parsed.data);
     }
-    const parsed = chatRequestSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0].message, 400, 'invalid_request');
-    }
-    const { query: trimmedQuery, chatId } = parsed.data;
+    const imageTokens = images.reduce((sum, img) => sum + estimateImageTokens(img.width, img.height), 0);
 
     // 1. Čitanja pre rezervacije (korisnički klijent, RLS): vlasništvo razgovora i istorija.
     //    Istorija se šalje AI-ju pri svakom pitanju, pa je glavni deo procene tokena. Upisa još nema.
@@ -100,7 +149,7 @@ export async function POST(req: Request) {
     const reserved = await reserveUsage(
       actor,
       'chat',
-      estimateChatTokens(trimmedQuery, formattedHistory.map((h) => h.content)),
+      estimateChatTokens(trimmedQuery, formattedHistory.map((h) => h.content)) + imageTokens,
       ip
     );
     if (!reserved.ok) return reserved.errorResponse;
@@ -128,7 +177,13 @@ export async function POST(req: Request) {
 
     const { error: userMsgError } = await supabaseAdmin
       .from('messages')
-      .insert({ chat_id: activeChatId, user_id: user.id, role: 'user', content: trimmedQuery });
+      // Slika se ne čuva: u istoriju ide samo oznaka „📷 N slika” i pitanje
+      .insert({
+        chat_id: activeChatId,
+        user_id: user.id,
+        role: 'user',
+        content: images.length > 0 ? imageMessageContent(images.length, trimmedQuery) : trimmedQuery,
+      });
 
     if (userMsgError) {
       console.error('User Message Save Error:', userMsgError);
@@ -182,17 +237,22 @@ export async function POST(req: Request) {
     const sources: MatchedChunk[] = chunks || [];
 
     // Dokumenti su nepouzdani: buildRagContext escape-uje < i > i čisti naziv fajla
-    const systemPrompt = buildSystemPrompt(buildRagContext(sources));
-    const claudeMessages = [...formattedHistory, { role: 'user', content: trimmedQuery }];
+    const systemPrompt = buildSystemPrompt(buildRagContext(sources), { images: images.length });
+    // Slike vidi samo ovo pitanje; istorija je tekst (odluka vlasnika)
+    const claudeMessages: { role: string; content: string | ClaudeContentBlock[] }[] = [
+      ...formattedHistory,
+      { role: 'user', content: images.length > 0 ? buildImageUserContent(images, trimmedQuery) : trimmedQuery },
+    ];
 
     // Zahtev ide na Claude: i ako se prekine (timeout, mreža), Anthropic je ulaz verovatno već obradio.
     // Procena ulaza zato ostaje u budžetu, da se dugi odgovori ne mogu "besplatno" ponavljati preko timeout-a.
-    const estimatedInputTokens = estimateTokens(systemPrompt + claudeMessages.map((m) => m.content).join(''));
+    const estimatedInputTokens =
+      estimateTokens(systemPrompt + formattedHistory.map((m) => m.content).join('') + trimmedQuery) + imageTokens;
     spent.input = estimatedInputTokens;
 
-    // 6. Poziv Claude API uz Timeout zaštitu (35s)
+    // 6. Poziv Claude API uz Timeout zaštitu (35 s, sa slikama 40 s)
     const claudeController = new AbortController();
-    const claudeTimeout = setTimeout(() => claudeController.abort(), 35000);
+    const claudeTimeout = setTimeout(() => claudeController.abort(), images.length > 0 ? CLAUDE_IMAGES_TIMEOUT_MS : CLAUDE_TIMEOUT_MS);
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -264,6 +324,7 @@ export async function POST(req: Request) {
       metadata: {
         document_ids: uniqueDocumentIds(sources),
         sources: sources.length,
+        ...(images.length > 0 ? { images: images.length } : {}),
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         embed_tokens: spent.embed,

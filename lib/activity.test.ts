@@ -287,3 +287,39 @@ test('describeActivity: otpremljen Word dokument navodi vrstu fajla', () => {
   );
   assert.deepEqual(d.details, ['Dokument: Zakon o radu', 'Vrsta fajla: Word (.docx)', 'Pasusa: 3', 'Veličina: 1,0 KB']);
 });
+
+test('describeActivity: odbijena slika uz pitanje i strana slikanog dokumenta (Faza 3.5)', () => {
+  const chat = describeActivity(
+    row('document_upload_blocked', { metadata: { reason: 'unreadable_image', finding: 'trailing_data', file_kind: 'image', context: 'chat_image', size_bytes: 2048 } }),
+    titles
+  );
+  assert.deepEqual(chat.details, ['Slika je oštećena ili nije ispravan JPEG', 'Vrsta fajla: Slika sa telefona', 'Slika uz pitanje (nije sačuvana)', 'Veličina: 2,0 KB']);
+  assert.ok(!chat.details.join(' ').includes('trailing'));
+
+  const transcribe = describeActivity(
+    row('document_upload_blocked', { metadata: { reason: 'image_dimensions', width: 5000, height: 10, file_kind: 'image', context: 'transcribe' } }),
+    titles
+  );
+  assert.deepEqual(transcribe.details, ['Slika ima neodgovarajuće dimenzije', 'Vrsta fajla: Slika sa telefona', 'Strana slikanog dokumenta (prepis, nije sačuvana)']);
+
+  const large = describeActivity(row('document_upload_blocked', { metadata: { reason: 'image_too_large' } }), titles);
+  assert.deepEqual(large.details, ['Slika je prevelika']);
+});
+
+test('describeActivity: slikan dokument u bazi znanja i pitanje sa slikama (Faza 3.5)', () => {
+  const doc = describeActivity(
+    row('document_uploaded', { resource_type: 'document', resource_id: DOC, metadata: { chunks: 4, file_kind: 'image', pages: 3, size_bytes: 3000 } }),
+    titles
+  );
+  assert.deepEqual(doc.details, ['Dokument: Zakon o radu', 'Vrsta fajla: Slika sa telefona', 'Broj strana: 3', 'Pasusa: 4', 'Veličina: 2,9 KB']);
+
+  const question = describeActivity(
+    row('question_asked', { resource_type: 'chat', resource_id: DOC, metadata: { document_ids: [], sources: 0, images: 2, input_tokens: 10, output_tokens: 5 } }),
+    titles
+  );
+  assert.deepEqual(question.details, [`Razgovor: ID ${DOC.slice(0, 8)}`, 'Bez izvora iz dokumenata', 'Broj slika uz pitanje: 2', 'Potrošeno tokena: 15']);
+
+  // Nepouzdan broj slika se ignoriše
+  const bad = describeActivity(row('question_asked', { metadata: { images: 'mnogo' } }), titles);
+  assert.deepEqual(bad.details, []);
+});
