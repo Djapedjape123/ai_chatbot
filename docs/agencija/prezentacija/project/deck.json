@@ -1,0 +1,20 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-11-06T13:15:00Z" },
+  "lists": "css",
+  "title": "Partnerstvo: AI pravni asistent",
+  "cover": "cover",
+  "order": ["cover", "ideja", "problem", "resenje", "demo", "pozicija", "zasto-sada", "cenovnik", "racunica", "zasto-vi", "uloge", "odgovornost-ai", "podaci", "izmedju-nas", "online", "stanje", "ime", "sledeci", "pitanja"],
+  "sections": {
+    "s1": { "description": "Ideja partnerstva i šta proizvod radi", "start": "cover" },
+    "s2": { "description": "Kome se prodaje i zašto baš sada", "start": "pozicija" },
+    "s3": { "description": "Cene, zarada i ko šta radi", "start": "cenovnik" },
+    "s4": { "description": "Odgovornost i kuda idu podaci", "start": "odgovornost-ai" },
+    "s5": { "description": "Prodaja, stanje proizvoda i sledeći korak", "start": "online" }
+  },
+  "faces": {
+    "newsreader": { "family": "Newsreader", "href": "https://fonts.googleapis.com/css2?family=Newsreader:wght@400..700&display=swap" },
+    "ibm-plex-sans": { "family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" }
+  },
+  "designSystems": []
+}
