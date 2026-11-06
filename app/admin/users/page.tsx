@@ -58,7 +58,7 @@ export default async function AdminUsersPage() {
 
       <section aria-labelledby="invite-heading">
         <h2 id="invite-heading" className="text-sm font-semibold text-[#16263D] mb-3">
-          Pozovi advokata
+          Pozovi advokata/pripravnika
         </h2>
         <InviteForm />
       </section>
