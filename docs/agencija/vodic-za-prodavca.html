@@ -1,0 +1,286 @@
+<title>Vodič za prodavca</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..700&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Jedan stub teksta (oko 70 znakova), kao radni papir; koraci demo scenarija kao kartice sa tri reda: radite, kažete, treba da se vidi. */
+  :root {
+    --paper: #F7F3EC;
+    --sheet: #FFFDF9;
+    --ink: #16263D;
+    --ink-soft: #4B5768;
+    --rule: #E2DCCF;
+    --marker: #F2D64B;
+    --marker-ink: #16263D;
+    --font-display: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+    --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #111A28; --sheet: #182435; --ink: #EEE9DF; --ink-soft: #B6C0CD; --rule: #2B3A50;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #111A28; --sheet: #182435; --ink: #EEE9DF; --ink-soft: #B6C0CD; --rule: #2B3A50;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .page { max-width: 46rem; margin: 0 auto; padding-block: 3rem 4rem; display: flex; flex-direction: column; gap: 3rem; }
+  header { display: flex; flex-direction: column; gap: 1rem; }
+  .eyebrow { font-size: .8rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 500; line-height: 1.15; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2.2rem, 6vw, 3.25rem); }
+  h2 { font-size: 1.9rem; }
+  h3 { font-size: 1.3rem; font-weight: 600; }
+  p, ul, ol { margin: 0; }
+  ul, ol { padding-left: 1.25rem; display: flex; flex-direction: column; gap: .35rem; }
+  .lead { font-size: 1.15rem; color: var(--ink-soft); }
+  mark { background: var(--marker); color: var(--marker-ink); padding: 0 .2em; border-radius: 2px; }
+  nav { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding-block: .75rem; }
+  nav a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  nav a:hover, nav a:focus-visible { text-decoration: underline; }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  section { display: flex; flex-direction: column; gap: 1.5rem; scroll-margin-top: 1rem; }
+  .block { display: flex; flex-direction: column; gap: .9rem; }
+  .note { font-size: .95rem; color: var(--ink-soft); }
+
+  .checklist { list-style: none; padding: 0; gap: .6rem; }
+  .checklist label { display: flex; gap: .75rem; align-items: flex-start; cursor: pointer; }
+  .checklist input { width: 1.15rem; height: 1.15rem; margin-top: .3rem; accent-color: var(--ink); flex: none; }
+  .checklist input:checked + span { color: var(--ink-soft); text-decoration: line-through; }
+  .reset { align-self: flex-start; font: inherit; font-size: .9rem; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 6px; padding: .3rem .8rem; cursor: pointer; }
+
+  .step { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 1.25rem 1.25rem 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
+  .step-head { display: flex; gap: .9rem; align-items: baseline; }
+  .step-num { font-family: var(--font-display); font-size: 1.9rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+  .rows { display: grid; grid-template-columns: 9.5rem 1fr; gap: .6rem 1rem; margin: 0; }
+  .rows dt { font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); padding-top: .2rem; }
+  .rows dd { margin: 0; min-width: 0; }
+  .say { font-family: var(--font-display); font-size: 1.15rem; font-style: italic; }
+  .if { font-size: .95rem; color: var(--ink-soft); border-top: 1px dashed var(--rule); padding-top: .75rem; }
+
+  .qa { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--rule); }
+  .qa div { border-bottom: 1px solid var(--rule); padding-block: .9rem; display: flex; flex-direction: column; gap: .3rem; }
+  .qa dt { font-weight: 600; }
+  .qa dd { margin: 0; color: var(--ink-soft); }
+
+  .never { background: var(--ink); color: var(--paper); border-radius: 10px; padding: 1.25rem 1.4rem; display: flex; flex-direction: column; gap: .75rem; }
+  .never h3 { color: var(--marker); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+  table { border-collapse: collapse; width: 100%; min-width: 36rem; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: .7rem .9rem; border-bottom: 1px solid var(--rule); }
+  th { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 1rem; font-size: .9rem; color: var(--ink-soft); }
+
+  @media (max-width: 560px) {
+    .rows { grid-template-columns: 1fr; gap: .15rem; }
+    .rows dd { margin-bottom: .6rem; }
+  }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="page">
+  <header>
+    <p class="eyebrow">Za prodavca i vlasnika agencije</p>
+    <h1>Vodič za prodavca</h1>
+    <p class="lead">Kako sami pokazati AI pravnog asistenta kancelariji, za 10 do 12 minuta, na izmišljenom predmetu. U drugom delu su odgovori na pitanja o odgovornosti i podacima.</p>
+    <p><mark>Paragraf zna zakone. Ova aplikacija zna vaše predmete.</mark></p>
+  </header>
+
+  <nav aria-label="Delovi vodiča">
+    <a href="#priprema">Priprema</a>
+    <a href="#scenario">Scenario</a>
+    <a href="#pitanja">Pitanja tokom demoa</a>
+    <a href="#odgovornost">Odgovornost i podaci</a>
+  </nav>
+
+  <section id="priprema" aria-labelledby="priprema-naslov">
+    <h2 id="priprema-naslov">Pre demonstracije</h2>
+    <p>Demo podaci su četiri izmišljena Word dokumenta o zakupu lokala (ugovor, aneks, dopis, zapisnik). Na vrhu svakog piše crvenim slovima da je izmišljen.</p>
+    <ul class="checklist" id="checklist">
+      <li><label><input type="checkbox" id="c1"><span>Prijavljen nalog <b>demo advokat 1</b>, sa već otpremljenim ugovorom (01) i aneksom (02).</span></label></li>
+      <li><label><input type="checkbox" id="c2"><span>U drugom pregledaču ili privatnom prozoru prijavljen <b>demo advokat 2</b>, bez dokumenata.</span></label></li>
+      <li><label><input type="checkbox" id="c3"><span>Dopis (03) na računaru, spreman za otpremanje.</span></label></li>
+      <li><label><input type="checkbox" id="c4"><span>Odštampana strana zapisnika (04), telefon sa prijavljenim nalogom advokat 1.</span></label></li>
+      <li><label><input type="checkbox" id="c5"><span>Stabilan internet i rezervni snimak ekrana celog scenarija na računaru.</span></label></li>
+      <li><label><input type="checkbox" id="c6"><span>Za admin deo: snimak ekrana ili prisustvo vlasnika proizvoda. Prodavac nema admin nalog.</span></label></li>
+    </ul>
+    <button type="button" class="reset" id="reset">Očisti spisak</button>
+  </section>
+
+  <section id="scenario" aria-labelledby="scenario-naslov">
+    <h2 id="scenario-naslov">Scenario, korak po korak</h2>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">1</span><h3>Pitanje nad ugovorom i aneksom</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Na nalogu advokat 1 pitate: „Kada zakupac može da raskine ugovor i koji je otkazni rok?”</dd>
+        <dt>Kažete</dt><dd class="say">„Advokat pita kao što bi pitao kolegu. Pogledajte, uz odgovor stoji iz kog dokumenta je izvučen.”</dd>
+        <dt>Treba da se vidi</dt><dd>Otkazni rok je <b>60 dana</b>, jer ga je aneks promenio (u ugovoru je 90), i ne pre 1. 4. 2027. Raskid uz rok od 30 dana ako je prostor nepodoban duže od 30 dana ili zakupodavac ne popravi kvar u roku od 60 dana. Navedeni su nazivi oba dokumenta.</dd>
+      </dl>
+      <p class="if">Ako odgovor kaže 90 dana i ne pominje aneks, pitajte: „Da li je otkazni rok menjan aneksom?” Zatim recite: „Zato advokat uvek proverava izvor.” Ovo je dobar uvod u priču o odgovornosti.</p>
+    </article>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">2</span><h3>Pripravnik traži rokove</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Pitate: „Izdvoji sve rokove iz ovog ugovora.”</dd>
+        <dt>Kažete</dt><dd class="say">„Ovo pripravnik inače radi ručno, listajući ugovor.”</dd>
+        <dt>Treba da se vidi</dt><dd>Spisak: zakupnina do 5. u mesecu; depozit za 8 dana, vraća se za 30; predaja do 1. 4. 2026; trajanje do 31. 3. 2031; popravka krova i instalacija za 60 dana; otkaz; opomena 15 dana; vraćanje prostora za 15 dana; polisa osiguranja za 30 dana.</dd>
+      </dl>
+    </article>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">3</span><h3>Slika sa telefona</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Na telefonu dodirnete dugme za kameru, slikate odštampan zapisnik i pitate: „Koje je stanje brojila struje i ko popravlja napukle pločice, do kada?”</dd>
+        <dt>Kažete</dt><dd class="say">„Na sudu ili kod klijenta: slikate dokument i pitate. Slika se ne čuva nigde.”</dd>
+        <dt>Treba da se vidi</dt><dd><b>18.452 kWh</b>. Pločice popravlja <b>zakupodavac do 30. 4. 2026</b>.</dd>
+      </dl>
+    </article>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">4</span><h3>Drugi advokat ne vidi tuđe spise</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Na nalogu advokat 2 pitate: „Koliki je otkazni rok u ugovoru o zakupu?”</dd>
+        <dt>Kažete</dt><dd class="say">„Ovo je drugi advokat iste kancelarije. Ne vidi tuđe spise, i to čuva baza podataka, a ne samo aplikacija.”</dd>
+        <dt>Treba da se vidi</dt><dd>Odgovor počinje napomenom da se informacija ne nalazi u priloženoj literaturi. Nema izvora iz dokumenata advokata 1.</dd>
+      </dl>
+    </article>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">5</span><h3>Dokument sa skrivenim uputstvom</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Na nalogu advokat 1 otpremite dopis (03). Kad se pojavi žuto upozorenje, kliknete <b>„Otkaži”</b>.</dd>
+        <dt>Kažete</dt><dd class="say">„U ovom dopisu je rečenica belim slovima koju čovek ne vidi, a koja pokušava da prevari AI. Aplikacija ju je našla i pita vas pre nego što išta doda.”</dd>
+        <dt>Treba da se vidi</dt><dd>Upozorenje: „poziv da se zanemare prethodna uputstva”, sa dugmadima „Otkaži” i „Ipak dodaj”.</dd>
+      </dl>
+      <p class="if">Nikad ne klikćite „Ipak dodaj” u demonstraciji.</p>
+    </article>
+
+    <article class="step">
+      <div class="step-head"><span class="step-num">6</span><h3>Admin panel vlasnika kancelarije</h3></div>
+      <dl class="rows">
+        <dt>Radite</dt><dd>Pokažete snimak ekrana (ili to radi vlasnik proizvoda): poziv advokata mejlom, blokada naloga, dnevnik aktivnosti i izvoz u CSV.</dd>
+        <dt>Kažete</dt><dd class="say">„Vlasnik kancelarije vidi ko je šta i kada radio, ali ne i šta piše u spisima.”</dd>
+        <dt>Treba da se vidi</dt><dd>U dnevniku su radnje i vremena, bez teksta pitanja i dokumenata. Admin vidi nazive i datume dokumenata, ne sadržaj.</dd>
+      </dl>
+    </article>
+  </section>
+
+  <section id="pitanja" aria-labelledby="pitanja-naslov">
+    <h2 id="pitanja-naslov">Pitanja tokom demonstracije</h2>
+    <p class="note">Kratki odgovori. Detalji su u delu <a href="#odgovornost">Odgovornost i podaci</a>.</p>
+    <dl class="qa">
+      <div><dt>Kuda idu moji podaci?</dt><dd>Tekst dokumenata i pitanja obrađuju dva AI servisa u SAD (Anthropic, odnosno Claude, i Voyage). U bazi kancelarije ostaju tekst pasusa za pretragu i razgovori. Originalni fajl i fotografije se ne čuvaju.</dd></div>
+      <div><dt>Ko vidi moje spise?</dt><dd>Samo advokat koji ih je otpremio. Admin kancelarije vidi nazive i datume dokumenata, ne sadržaj.</dd></div>
+      <div><dt>Šta ako AI pogreši?</dt><dd>Aplikacija je alat za pretragu, a ne pravni savet. Uz odgovor stoji izvor, a advokat ga proverava i odgovara za savet klijentu, kao i sa svakim drugim alatom.</dd></div>
+      <div><dt>Da li se čuva fajl koji otpremim?</dt><dd>Ne. Čuva se samo tekst podeljen na pasuse, da bi pretraga radila. Advokat može da obriše dokument.</dd></div>
+      <div><dt>Imamo Paragraf.</dt><dd>Paragraf odgovara iz baze zakona i sudske prakse. Ova aplikacija odgovara iz vaših spisa i ugovora. Koristite oba.</dd></div>
+      <div><dt>Koliko košta?</dt><dd>Start do 5 naloga 149 €, Kancelarija do 10 naloga 249 €, Plus do 20 naloga 399 € mesečno, plus podešavanje 390 €. Cene su bez PDV-a.</dd></div>
+      <div><dt>Mogu li da probam sa svojim spisima?</dt><dd>Posle ugovora, na posebnom sistemu za vašu kancelariju. Do tada se proba samo na izmišljenim dokumentima.</dd></div>
+    </dl>
+
+    <div class="never">
+      <h3>Šta se nikad ne radi</h3>
+      <ul>
+        <li>Ne ubacuju se pravi spisi klijenata u demonstraciju.</li>
+        <li>Ne obećava se: „apsolutno bezbedno”, „enkriptovano”, „podaci ne izlaze iz Srbije”, „AI se ne trenira na vašim podacima”, „odgovara isključivo iz vaših dokumenata”.</li>
+        <li>Ne klikće se „Ipak dodaj” kod dopisa sa skrivenim uputstvom.</li>
+        <li>Niko iz kancelarije ne dobija pristup demo nalozima.</li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h3>Ako nešto ne radi</h3>
+      <p>Recite: „Pokazaću vam to na snimku”, i pustite rezervni snimak. Posle sastanka javite vlasniku proizvoda šta je bilo, u koliko sati i na kom koraku: [telefon ili mejl vlasnika proizvoda].</p>
+    </div>
+  </section>
+
+  <section id="odgovornost" aria-labelledby="odgovornost-naslov">
+    <p class="eyebrow">Drugi deo · za vlasnika agencije</p>
+    <h2 id="odgovornost-naslov">Odgovornost i podaci</h2>
+    <p class="note">Ovo nisu pravni saveti, nego teme koje advokat upisuje u ugovore. Svaka tvrdnja o aplikaciji je proverena u njenom kodu.</p>
+
+    <div class="block">
+      <h3>Ako AI pogreši</h3>
+      <ul>
+        <li>Aplikacija je alat za pretragu i istraživanje, a ne pravni savet. Za savet klijentu odgovara advokat, kao i sa svakim drugim alatom. I Paragraf za svoj AI piše da „ne može da zameni pravnika”.</li>
+        <li>Uputstvo AI-ju traži da uz svaki navod stavi naziv dokumenta, da jasno napomene kad odgovor nije iz dokumenata kancelarije i da napomene kad se dokumenti razlikuju. To je uputstvo, ne garancija, pa advokat uvek proverava izvor.</li>
+        <li>U uslove korišćenja ide: „nije pravni savet”, obaveza korisnika da proveri izvor i ograničenje odgovornosti (uobičajeno najviše do iznosa plaćenog u poslednjih 12 meseci).</li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h3>Ako podaci procure</h3>
+      <ul>
+        <li>Tehničke mere koje postoje: svaki advokat vidi samo svoje podatke (to čuva baza), admin ima obavezan MFA, beleži se ko je šta radio, a fajlovi se proveravaju pre čitanja. Pre prve kancelarije svaka kancelarija dobija poseban sistem.</li>
+        <li>Sa kancelarijom se potpisuje ugovor o obradi podataka: kancelarija je rukovalac podacima, a pružalac usluge obrađivač.</li>
+        <li>Pre prve kancelarije advokat proverava šta Zakon o zaštiti podataka o ličnosti traži za prenos podataka ka servisima u SAD.</li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h3>Između agencije i vlasnika proizvoda</h3>
+      <ul>
+        <li>Agencija fakturiše, pa je ona ugovorna strana prema kancelariji. Zato partnerski ugovor prenosi tehničku odgovornost (greške u aplikaciji, bezbednosni incident) na vlasnika proizvoda, u istim granicama koje agencija ima prema kancelariji.</li>
+        <li>Agencija odgovara za ono što obeća u prodaji. Zato prodavac koristi samo tvrdnje iz ovog vodiča.</li>
+        <li>Pri incidentu vlasnik proizvoda vodi tehnički deo, a agencija komunikaciju sa kancelarijom. Rokovi za obaveštavanje se upisuju u ugovor.</li>
+        <li>Kad bude više kancelarija, vredi razmotriti osiguranje od profesionalne ili sajber odgovornosti.</li>
+      </ul>
+    </div>
+
+    <div class="block">
+      <h3>Kuda idu podaci</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Šta</th><th scope="col">Gde ide</th><th scope="col">Šta se čuva</th></tr></thead>
+          <tbody>
+            <tr><td>PDF ili Word</td><td>Server izvuče tekst i podeli ga na pasuse, a pasusi idu u Voyage (SAD) radi pretrage.</td><td>Tekst pasusa i vektori u bazi kancelarije. Originalni fajl se ne čuva.</td></tr>
+            <tr><td>Pitanje</td><td>Pretraga radi samo nad pasusima tog advokata. Pitanje, pronađeni pasusi i istorija razgovora idu Claude-u (Anthropic, SAD).</td><td>Pitanje i odgovor u razgovorima tog advokata, koji on može da obriše.</td></tr>
+            <tr><td>Slika sa telefona</td><td>Telefon je smanjuje i briše GPS podatke, server je dodatno čisti, pa ide Claude-u.</td><td>Ne čuva se nigde. U istoriji piše samo broj slika.</td></tr>
+            <tr><td>Dnevnik aktivnosti</td><td>Ostaje u bazi kancelarije.</td><td>Samo radnja, vreme i ID-evi, nikad tekst. Briše se posle 90 dana.</td></tr>
+            <tr><td>Admin kancelarije</td><td>Vidi naloge, potrošnju i nazive i datume dokumenata.</td><td>Ne vidi sadržaj dokumenata ni razgovora.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Uslovi Anthropic-a i Voyage-a o čuvanju i korišćenju podataka se proveravaju i prilažu pre prve kancelarije. Do tada se o tome ništa ne obećava.</p>
+    </div>
+  </section>
+
+  <footer>Verzija od 6. 11. 2026. Demo podaci i prezentacija za sastanak su posebni materijali.</footer>
+</div>
+
+<script>
+  (function () {
+    var KEY = 'vodic-checklist';
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('#checklist input'));
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+    boxes.forEach(function (box) {
+      box.checked = !!saved[box.id];
+      box.addEventListener('change', function () {
+        saved[box.id] = box.checked;
+        try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      });
+    });
+    document.getElementById('reset').addEventListener('click', function () {
+      saved = {};
+      boxes.forEach(function (box) { box.checked = false; });
+      try { localStorage.removeItem(KEY); } catch (e) {}
+    });
+  })();
+</script>
